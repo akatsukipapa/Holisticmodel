@@ -3,79 +3,74 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web VTuber Demo</title>
+    <title>Web VTuber Demo (Fixed)</title>
     <style>
         body { margin: 0; background-color: #222; overflow: hidden; font-family: sans-serif; }
         
-        /* 自分のカメラ映像（右下に小さく表示して確認用にする） */
         #input-video {
             position: absolute; bottom: 20px; right: 20px;
             width: 320px; height: 180px;
             transform: scaleX(-1); border-radius: 10px; border: 2px solid #fff; z-index: 2;
         }
 
-        /* 3Dアバターを表示するキャンバス */
         canvas { display: block; width: 100vw; height: 100vh; }
 
         #loading {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             color: #00d2ff; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; z-index: 100;
         }
+
+        /* 動作状況を表示するデバッグ文字 */
+        #debug-info {
+            position: absolute; top: 10px; left: 10px;
+            color: yellow; background: rgba(0,0,0,0.5); padding: 5px; z-index: 101; pointer-events: none;
+        }
     </style>
 </head>
 <body>
 
-    <div id="loading">LOADING VRM Model...</div>
+    <div id="loading">LOADING SYSTEM...</div>
+    <div id="debug-info">Initializing...</div>
     
-    <!-- カメラ映像（非表示にせず、ワイプのように右下に置く） -->
     <video id="input-video" playsinline muted autoplay></video>
 
-    <!-- 必要なライブラリの読み込み -->
-    <!-- 1. MediaPipe Holistic -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <!-- ■ 修正点1: MediaPipeのバージョンを固定して読み込む -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1635989137/holistic.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1632432244/camera_utils.js" crossorigin="anonymous"></script>
     
-    <!-- 2. Three.js (3D描画エンジン) -->
+    <!-- Three.js & VRM -->
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
-    
-    <!-- 3. Pixiv Three-VRM (VRM読み込み用) -->
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
     
-    <!-- 4. Kalidokit (MediaPipeの座標をVRMの関節回転に変換する計算機) -->
+    <!-- Kalidokit -->
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
 
     <script>
-        // --- 設定 ---
-        const VRM_FILE_PATH = './3453930163915015062.vrm'; // ファイル名
+        const VRM_FILE_PATH = './3453930163915015062.vrm'; 
+        const debugInfo = document.getElementById('debug-info');
 
-        // --- Three.js の初期化 (3D空間を作る) ---
+        // --- Three.js 初期化 ---
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
-        // 背景色（グリーンバックにしたければ 0x00FF00 とかにする）
         scene.background = new THREE.Color(0x333333);
 
         const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
-        camera.position.set(0.0, 1.4, 3.0); // カメラの位置（高さ1.4m、距離3m）
+        camera.position.set(0.0, 1.4, 3.0); 
 
-        // ライト
         const light = new THREE.DirectionalLight(0xffffff);
         light.position.set(1.0, 1.0, 1.0).normalize();
         scene.add(light);
-        const ambientLight = new THREE.AmbientLight(0x404040); // 環境光
-        scene.add(ambientLight);
+        scene.add(new THREE.AmbientLight(0x404040));
 
-        // --- VRMモデルの読み込み ---
+        // --- VRM読み込み ---
         let currentVrm = null;
         const loader = new THREE.GLTFLoader();
-        
-        loader.register((parser) => {
-            return new THREE_VRM.VRMLoaderPlugin(parser);
-        });
+        loader.register((parser) => new THREE_VRM.VRMLoaderPlugin(parser));
 
         loader.load(
             VRM_FILE_PATH,
@@ -83,28 +78,31 @@
                 const vrm = gltf.userData.vrm;
                 currentVrm = vrm;
                 scene.add(vrm.scene);
-                
-                // モデルをカメラの方に向ける（180度回転）
                 vrm.scene.rotation.y = Math.PI; 
-
-                // 腕を少し開き気味にする（Tポーズ回避）
-                // 必須ではないが、初期ポーズを自然にする処理
                 
+                // 腕を少し下げる（Tポーズ緩和）
+                const leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+                const rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+                if(leftUpperArm) leftUpperArm.rotation.z = 1.2;
+                if(rightUpperArm) rightUpperArm.rotation.z = -1.2;
+
                 document.getElementById('loading').style.display = 'none';
+                debugInfo.innerText = "VRM Loaded. Waiting for AI...";
                 console.log("VRM Loaded!");
             },
             (progress) => console.log('Loading VRM...', 100.0 * (progress.loaded / progress.total), '%'),
             (error) => {
                 console.error(error);
-                document.getElementById('loading').innerHTML = "ERROR: VRMファイルの読み込みに失敗。<br>ローカルサーバー経由で開いていますか？";
+                debugInfo.innerText = "Error loading VRM.";
             }
         );
 
-        // --- MediaPipe Holistic の設定 ---
+        // --- MediaPipe Holistic 設定 ---
         const videoElement = document.getElementById('input-video');
 
+        // ■ 修正点2: locateFileのURLもバージョン指定版にする
         const holistic = new Holistic({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`;
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1635989137/${file}`;
         }});
 
         holistic.setOptions({
@@ -117,40 +115,36 @@
 
         holistic.onResults(onResults);
 
-        // --- メインループ: 毎フレーム呼ばれる ---
+        // --- 描画ループ ---
         function onResults(results) {
+            // 動作確認用：左上の文字を更新
+            debugInfo.innerText = "Tracking Active! (" + new Date().toLocaleTimeString() + ")";
+
             animateVRM(results);
             renderer.render(scene, camera);
         }
 
-        // --- ★一番重要な処理：AIの結果をVRMに反映する ---
         function animateVRM(results) {
             if (!currentVrm) return;
 
-            // 1. Kalidokitを使って、MediaPipeの点群から「ポーズ（関節角度）」を計算
-            // Pose (体), Face (顔), Hand (手) のそれぞれのソルバーを実行
-            
+            // Pose, Face, Hand の計算
             const rigidPose = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {
                 runtime: 'mediapipe',
                 video: videoElement
             });
-
             const rigidFace = Kalidokit.Face.solve(results.faceLandmarks, {
                 runtime: 'mediapipe',
                 video: videoElement
             });
-            
-            // 右手・左手の処理
             const rigidLeftHand = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
             const rigidRightHand = Kalidokit.Hand.solve(results.rightHandLandmarks, "Right");
 
-            // 2. 計算結果をVRMのボーン（骨）に適用する関数
+            // 回転適用関数
             const rigRotation = (name, rotation, dampener = 1, lerpAmount = 0.3) => {
                 if (!rotation) return;
                 const part = currentVrm.humanoid.getNormalizedBoneNode(name);
                 if (!part) return;
                 
-                // 回転を適用（Euler角からQuaternionへ変換して適用）
                 const euler = new THREE.Euler(
                     rotation.x * dampener, 
                     rotation.y * dampener, 
@@ -158,51 +152,35 @@
                     rotation.rotationOrder || "XYZ"
                 );
                 const quaternion = new THREE.Quaternion().setFromEuler(euler);
-                
-                // slerpを使って滑らかに補間する（動きがガクガクしないように）
                 part.quaternion.slerp(quaternion, lerpAmount);
             };
 
-            // --- 体の動きを反映 ---
+            // Body
             if (rigidPose) {
                 rigRotation("hips", rigidPose.Hips.rotation, 0.7);
                 rigRotation("chest", rigidPose.Spine, 0.25, .3);
                 rigRotation("spine", rigidPose.Spine, 0.45, .3);
-                
                 rigRotation("rightUpperArm", rigidPose.RightUpperArm, 1, .3);
                 rigRotation("rightLowerArm", rigidPose.RightLowerArm, 1, .3);
                 rigRotation("leftUpperArm", rigidPose.LeftUpperArm, 1, .3);
                 rigRotation("leftLowerArm", rigidPose.LeftLowerArm, 1, .3);
             }
 
-            // --- 手の動きを反映 ---
-            if (rigidLeftHand) {
-                rigRotation("leftHand", rigidLeftHand.LeftWrist);
-                // 指の関節も全部動かすのは記述が長くなるので今回は手首のみ
-                // (Kalidokitは指の計算もしていますが、簡易化のため省略しています)
-            }
-            if (rigidRightHand) {
-                rigRotation("rightHand", rigidRightHand.RightWrist);
-            }
+            // Hands
+            if (rigidLeftHand) rigRotation("leftHand", rigidLeftHand.LeftWrist);
+            if (rigidRightHand) rigRotation("rightHand", rigidRightHand.RightWrist);
 
-            // --- 顔の動き（首の向き・口の開閉） ---
+            // Face
             if (rigidFace) {
                 rigRotation("neck", rigidFace.head, 0.7);
-                
-                // 口の開閉 (BlendShape)
-                // "aa" (あ) のシェイプキーを操作
-                const openAmount = rigidFace.mouth.shape.A; // 0.0 ~ 1.0
                 if(currentVrm.expressionManager){
-                     // VRM 1.0の書き方 (expressionManager)
+                    const openAmount = rigidFace.mouth.shape.A;
                     currentVrm.expressionManager.setValue('aa', openAmount);
-                    
-                    // まばたき
                     currentVrm.expressionManager.setValue('blinkLeft', 1 - rigidFace.eye.l);
                     currentVrm.expressionManager.setValue('blinkRight', 1 - rigidFace.eye.r);
                 }
             }
             
-            // アニメーション更新
             currentVrm.update(1.0 / 30.0);
         }
 
@@ -216,7 +194,6 @@
         });
         cameraUtils.start();
 
-        // ウィンドウリサイズ対応
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
