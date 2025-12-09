@@ -3,52 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VTuber Final Debug</title>
+    <title>VTuber Diagnostic</title>
     <style>
         body { margin: 0; background-color: #111; overflow: hidden; font-family: monospace; }
         .container { position: relative; width: 100vw; height: 100vh; }
-        
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; z-index: 0; }
-        canvas#skeleton-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 1; pointer-events: none; }
-        canvas#avatar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: none; }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #avatar-canvas { z-index: 2; display: none; }
+        #skeleton-canvas { z-index: 1; transform: scaleX(-1); }
         
+        /* 診断パネル */
+        #status-panel {
+            position: absolute; top: 10px; left: 10px; width: 300px;
+            background: rgba(0, 0, 0, 0.8); color: #fff; padding: 10px;
+            border-radius: 8px; z-index: 1000; font-size: 12px; border: 1px solid #555;
+        }
+        .status-item { margin-bottom: 5px; border-bottom: 1px solid #444; padding-bottom: 2px; }
+        .ok { color: #00ff00; font-weight: bold; }
+        .ng { color: #ff0000; font-weight: bold; }
+        .warn { color: #ffff00; font-weight: bold; }
+
         #toggle-btn {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             padding: 15px 40px; font-size: 1.5rem; font-weight: bold;
             color: #888; background: #333; border: 2px solid #555; border-radius: 50px; 
-            cursor: not-allowed; z-index: 100; transition: all 0.3s;
+            cursor: not-allowed; z-index: 100;
         }
         #toggle-btn.ready {
             color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff);
-            border: none; cursor: pointer; box-shadow: 0 0 15px rgba(255, 0, 204, 0.5);
+            border: none; cursor: pointer;
         }
-
-        #loading-bar-container {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 300px; height: 20px; background: #333; border-radius: 10px;
-            z-index: 101; border: 2px solid #555; display: block;
-        }
-        #loading-bar { width: 0%; height: 100%; background: #00d2ff; border-radius: 8px; transition: width 0.2s; }
-        #loading-text { position: absolute; top: -30px; left: 0; width: 100%; text-align: center; color: #fff; font-size: 1.2rem; }
-
-        #log { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.5); padding: 5px; z-index: 100; }
-        .error-log { color: #ff3333 !important; font-weight: bold; }
     </style>
 </head>
 <body>
+    <div id="status-panel">
+        <div class="status-item">System: <span id="st-system">Init...</span></div>
+        <div class="status-item">VRM Model: <span id="st-vrm" class="warn">Loading...</span></div>
+        <div class="status-item">MediaPipe AI: <span id="st-ai" class="ng">Waiting...</span></div>
+        <div class="status-item">Pose Data: <span id="st-pose" class="ng">No Data</span></div>
+        <div class="status-item">Calc(Kalidokit): <span id="st-calc" class="ng">Stopped</span></div>
+    </div>
+
     <div class="container">
         <video id="input-video" playsinline muted autoplay></video>
         <canvas id="skeleton-canvas"></canvas>
     </div>
 
-    <div id="loading-bar-container">
-        <div id="loading-text">Downloading... 0%</div>
-        <div id="loading-bar"></div>
-    </div>
+    <button id="toggle-btn" disabled>Loading...</button>
 
-    <button id="toggle-btn" disabled>Loading Model...</button>
-    <div id="log">Initializing...</div>
-
+    <!-- ライブラリ -->
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
@@ -61,182 +64,172 @@
         const videoElement = document.getElementById('input-video');
         const skeletonCanvas = document.getElementById('skeleton-canvas');
         const skelCtx = skeletonCanvas.getContext('2d');
-        const logDiv = document.getElementById('log');
         const toggleBtn = document.getElementById('toggle-btn');
-        const loadingContainer = document.getElementById('loading-bar-container');
-        const loadingBar = document.getElementById('loading-bar');
-        const loadingText = document.getElementById('loading-text');
+        
+        // ステータス表示用
+        const stSystem = document.getElementById('st-system');
+        const stVrm = document.getElementById('st-vrm');
+        const stAi = document.getElementById('st-ai');
+        const stPose = document.getElementById('st-pose');
+        const stCalc = document.getElementById('st-calc');
 
-        // ★ファイル名は間違いないのでそのまま
         const VRM_FILE_PATH = './avatar.vrm';
-
         let currentVrm = null;
         let isAvatarMode = false;
 
-        // --- 1. Three.js Setup (3Dワールドを作る) ---
+        // 1. Three.js Setup
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.domElement.id = 'avatar-canvas';
         document.querySelector('.container').appendChild(renderer.domElement);
         
         const scene = new THREE.Scene();
-        // カメラ設定
         const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
-        camera.position.set(0.0, 1.3, 4.5); // デフォルト位置
+        camera.position.set(0.0, 1.4, 1.5); // ★カメラを少し近づけました
         
         scene.add(new THREE.DirectionalLight(0xffffff));
         scene.add(new THREE.AmbientLight(0x404040));
 
-        // ★テスト用：赤い箱を追加（これが表示されれば3D機能は正常）
-        const testCube = new THREE.Mesh(
-            new THREE.BoxGeometry(0.3, 0.3, 0.3),
-            new THREE.MeshBasicMaterial({ color: 0xff0000 })
-        );
-        testCube.position.set(1.5, 1.0, 0.0); // 画面右側に配置
+        // テスト用Box
+        const testCube = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.2,0.2), new THREE.MeshBasicMaterial({color:0xff0000}));
+        testCube.position.set(0.8, 1.5, 0);
         scene.add(testCube);
 
-        // --- 2. Resize ---
         function resize() {
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            skeletonCanvas.width = w;
-            skeletonCanvas.height = h;
-            renderer.setSize(w, h);
-            camera.aspect = w / h;
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            skeletonCanvas.width = window.innerWidth;
+            skeletonCanvas.height = window.innerHeight;
+            camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
         }
         window.addEventListener('resize', resize);
         resize();
 
-        // --- 3. VRM Loading ---
-        const loader = new THREE.GLTFLoader();
-        loader.register((parser) => new THREE_VRM.VRMLoaderPlugin(parser));
-        
-        loader.load(
+        // 2. VRM Load
+        new THREE.GLTFLoader().register(p => new THREE_VRM.VRMLoaderPlugin(p)).load(
             VRM_FILE_PATH,
             (gltf) => {
                 currentVrm = gltf.userData.vrm;
                 scene.add(currentVrm.scene);
-                currentVrm.scene.rotation.y = Math.PI; // カメラに向ける
-
-                // ★アバターのサイズ自動調整ロジック
-                const box = new THREE.Box3().setFromObject(currentVrm.scene);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
+                currentVrm.scene.rotation.y = Math.PI;
                 
-                logDiv.innerText = `Size: ${size.y.toFixed(2)}m`; // ログにサイズを表示
+                // 初期ポーズ
+                const h = currentVrm.humanoid;
+                if(h.getNormalizedBoneNode('leftUpperArm')) h.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.2;
+                if(h.getNormalizedBoneNode('rightUpperArm')) h.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2;
 
-                // もし小さすぎたら拡大する、大きすぎたら縮小する
-                // 一般的なVRMは身長1.5m前後。もし0.01mとかなら100倍する。
-                if (size.y < 0.1) {
-                    currentVrm.scene.scale.set(100, 100, 100);
-                    logDiv.innerText += " (Scaled x100)";
-                } else if (size.y > 10) {
-                    currentVrm.scene.scale.set(0.1, 0.1, 0.1);
-                    logDiv.innerText += " (Scaled x0.1)";
-                }
-
-                // Tポーズ補正
-                const human = currentVrm.humanoid;
-                if(human.getNormalizedBoneNode('leftUpperArm')) human.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.2;
-                if(human.getNormalizedBoneNode('rightUpperArm')) human.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2;
-
-                // UI更新
-                loadingContainer.style.display = 'none';
+                stVrm.innerText = "OK (Loaded)";
+                stVrm.className = "ok";
                 toggleBtn.disabled = false;
                 toggleBtn.classList.add('ready');
-                toggleBtn.innerText = "スキン装着 (Transform)";
+                toggleBtn.innerText = "スキン装着 (Start)";
             },
-            (progress) => {
-                const percent = Math.floor(100.0 * (progress.loaded / progress.total));
-                loadingBar.style.width = percent + "%";
-                loadingText.innerText = `Downloading... ${percent}%`;
-            },
-            (error) => {
-                console.error(error);
-                loadingText.innerText = "Download Failed!";
-                loadingBar.style.background = "red";
-                logDiv.innerText = "Load Error.";
-                logDiv.className = "error-log";
+            undefined,
+            (e) => {
+                stVrm.innerText = "Error: " + e;
+                stVrm.className = "ng";
             }
         );
 
-        // --- 4. Toggle Button ---
+        // 3. Toggle
         toggleBtn.addEventListener('click', () => {
-            if (!currentVrm) return;
+            if(!currentVrm) return;
             isAvatarMode = !isAvatarMode;
-            if (isAvatarMode) {
-                toggleBtn.innerText = "骨格に戻る";
+            if(isAvatarMode) {
                 document.getElementById('avatar-canvas').style.display = 'block';
                 skeletonCanvas.style.display = 'none';
-                videoElement.style.opacity = "0.3";
-                logDiv.innerText = "Mode: 3D Avatar";
+                videoElement.style.opacity = "0.2";
+                toggleBtn.innerText = "骨格に戻る";
             } else {
-                toggleBtn.innerText = "スキン装着";
                 document.getElementById('avatar-canvas').style.display = 'none';
                 skeletonCanvas.style.display = 'block';
                 videoElement.style.opacity = "1.0";
-                logDiv.innerText = "Mode: Skeleton";
+                toggleBtn.innerText = "スキン装着";
             }
         });
 
-        // --- 5. Tracking Loop ---
-        const holistic = new Holistic({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`});
+        // 4. MediaPipe
+        const holistic = new Holistic({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`});
         holistic.setOptions({
             modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
         });
 
         holistic.onResults((results) => {
-            if (!isAvatarMode) {
-                // Skeleton
+            stSystem.innerText = "Running";
+            stAi.innerText = "OK (Receiving)";
+            stAi.className = "ok";
+
+            // 骨格モード
+            if(!isAvatarMode) {
                 skelCtx.save();
                 skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
                 drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
                 drawLandmarks(skelCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
                 skelCtx.restore();
             } else {
-                // Avatar
-                // 箱を回す（生存確認用）
-                testCube.rotation.x += 0.05;
-                testCube.rotation.y += 0.05;
+                // アバターモード
+                testCube.rotation.x += 0.05; // 箱回転
+                
+                // データチェック
+                if(results.poseLandmarks) {
+                    stPose.innerText = "OK (Landmarks Found)";
+                    stPose.className = "ok";
+                    
+                    // Kalidokit計算
+                    // poseWorldLandmarksが無い場合はposeLandmarksで代用（フォールバック）
+                    const lm3d = results.poseWorldLandmarks || results.poseLandmarks; 
 
-                if (currentVrm && results.poseLandmarks && results.poseWorldLandmarks) {
-                    // ここでアバターを動かす処理
-                    const rigRotation = (name, rot, damp = 1, lerp = 0.3) => {
-                        if (!rot) return;
-                        const node = currentVrm.humanoid.getNormalizedBoneNode(name);
-                        if (!node) return;
-                        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x * damp, rot.y * damp, rot.z * damp));
-                        node.quaternion.slerp(q, lerp);
-                    };
-                    const pose = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {runtime: 'mediapipe', video: videoElement});
-                    const face = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe', video: videoElement});
-                    
-                    if (pose) {
-                        rigRotation("hips", pose.Hips.rotation, 0.7);
-                        rigRotation("chest", pose.Spine, 0.25);
-                        rigRotation("spine", pose.Spine, 0.45);
-                        rigRotation("rightUpperArm", pose.RightUpperArm, 1);
-                        rigRotation("rightLowerArm", pose.RightLowerArm, 1);
-                        rigRotation("leftUpperArm", pose.LeftUpperArm, 1);
-                        rigRotation("leftLowerArm", pose.LeftLowerArm, 1);
+                    let pose = null;
+                    try {
+                        pose = Kalidokit.Pose.solve(lm3d, results.poseLandmarks, {runtime: 'mediapipe', video: videoElement});
+                    } catch(e) {
+                        console.error(e);
                     }
-                    if (face) rigRotation("neck", face.head, 0.7);
-                    
-                    currentVrm.update(1.0 / 30.0);
+
+                    if(pose) {
+                        stCalc.innerText = "OK (Solving)";
+                        stCalc.className = "ok";
+                        
+                        // 反映
+                        const rig = (name, rot) => {
+                            if(!rot) return;
+                            const node = currentVrm.humanoid.getNormalizedBoneNode(name);
+                            if(node) {
+                                node.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z)), 0.3);
+                            }
+                        };
+                        
+                        rig("hips", pose.Hips.rotation);
+                        rig("spine", pose.Spine);
+                        rig("chest", pose.Spine);
+                        rig("rightUpperArm", pose.RightUpperArm);
+                        rig("rightLowerArm", pose.RightLowerArm);
+                        rig("leftUpperArm", pose.LeftUpperArm);
+                        rig("leftLowerArm", pose.LeftLowerArm);
+
+                        // 顔と手も
+                        const face = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe'});
+                        if(face) rig("neck", face.head);
+                        
+                    } else {
+                        stCalc.innerText = "NG (No Solution)";
+                        stCalc.className = "ng";
+                    }
+                    currentVrm.update(1.0/30.0);
+                    renderer.render(scene, camera);
+
+                } else {
+                    stPose.innerText = "NG (Body Not Found)";
+                    stPose.className = "ng";
                 }
-                // ★レンダリング命令（これが抜けてると画面が更新されない）
-                renderer.render(scene, camera);
             }
         });
 
-        // --- 6. Camera Start ---
-        window.onload = function() {
-            if (typeof Camera === 'undefined') return;
-            const cameraUtils = new Camera(videoElement, {
-                onFrame: async () => { await holistic.send({image: videoElement}); },
+        // 5. Start
+        window.onload = () => {
+            new Camera(videoElement, {
+                onFrame: async () => await holistic.send({image: videoElement}),
                 width: 640, height: 480
-            });
-            cameraUtils.start();
+            }).start();
         };
     </script>
 </body>
