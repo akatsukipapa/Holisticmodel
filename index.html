@@ -3,28 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VTuber Production</title>
+    <title>VTuber Final Fix</title>
     <style>
-        /* 背景色：グリーンバックにしたい場合は #00FF00 に変更してください */
         body { margin: 0; background-color: #222; overflow: hidden; font-family: monospace; }
-        
         .container { position: relative; width: 100vw; height: 100vh; }
         
-        /* カメラ映像（アバターモード時は消える） */
+        /* カメラ映像（完全には消さず、位置合わせ用にうっすら残す設定にしました） */
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; z-index: 0; transition: opacity 0.5s; }
         
-        /* 骨格表示 */
         canvas#skeleton-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 1; pointer-events: none; }
         
         /* ステータス画面 */
         #status-panel {
-            position: absolute; top: 10px; left: 10px; width: 250px;
+            position: absolute; top: 10px; left: 10px; width: 200px;
             background: rgba(0, 0, 0, 0.6); color: #fff; padding: 10px;
             border-radius: 8px; z-index: 1000; font-size: 11px; pointer-events: none;
         }
         .ok { color: #00ff00; } .ng { color: #ff3333; }
 
-        /* 変身ボタン */
         #toggle-btn {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             padding: 15px 40px; font-size: 1.5rem; font-weight: bold;
@@ -41,6 +37,7 @@
     <div id="status-panel">
         <div>VRM: <span id="st-vrm" class="ng">Loading...</span></div>
         <div>Face: <span id="st-face" class="ng">Waiting...</span></div>
+        <div>Size: <span id="st-size">-</span></div>
     </div>
 
     <div class="container">
@@ -65,12 +62,13 @@
         const toggleBtn = document.getElementById('toggle-btn');
         const stVrm = document.getElementById('st-vrm');
         const stFace = document.getElementById('st-face');
+        const stSize = document.getElementById('st-size');
 
         const VRM_FILE_PATH = './avatar.vrm';
         let currentVrm = null;
         let isAvatarMode = false;
 
-        // --- 1. Three.js (カメラ設定調整) ---
+        // 1. Three.js Setup
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.domElement.id = 'avatar-canvas';
         renderer.domElement.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; display:none;";
@@ -78,10 +76,9 @@
         
         const scene = new THREE.Scene();
         
-        // ★ここが調整ポイント！アバターをバストアップで映す設定
+        // ★カメラ位置を少し引いて、全体が見えやすい位置に戻しました
         const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
-        // 位置調整: (x, y, z) -> yを下げて、zでズーム具合を調整
-        camera.position.set(0.0, 1.2, 1.4); 
+        camera.position.set(0.0, 1.3, 2.0); // 距離2.0m (少し引き)
         
         scene.add(new THREE.DirectionalLight(0xffffff));
         scene.add(new THREE.AmbientLight(0x505050));
@@ -96,7 +93,7 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- 2. VRM Load (位置調整) ---
+        // 2. VRM Load (サイズ自動調整の復活！)
         new THREE.GLTFLoader().register(p => new THREE_VRM.VRMLoaderPlugin(p)).load(
             VRM_FILE_PATH,
             (gltf) => {
@@ -104,9 +101,21 @@
                 scene.add(currentVrm.scene);
                 currentVrm.scene.rotation.y = Math.PI;
 
-                // ★アバターの高さ調整（画面の下すぎる場合はここの -1.0 を調整）
-                // 0.0 だと高すぎるので、少し下に下げる
-                currentVrm.scene.position.y = -1.0; 
+                // --- ★ここが重要：サイズの自動調整 ---
+                const box = new THREE.Box3().setFromObject(currentVrm.scene);
+                const size = box.getSize(new THREE.Vector3());
+                stSize.innerText = size.y.toFixed(2) + "m";
+
+                if (size.y < 0.1) {
+                    currentVrm.scene.scale.set(100, 100, 100); // 小さすぎる場合拡大
+                    stSize.innerText += " (x100)";
+                } else if (size.y > 5) {
+                    currentVrm.scene.scale.set(0.1, 0.1, 0.1); // 大きすぎる場合縮小
+                    stSize.innerText += " (x0.1)";
+                }
+
+                // 位置を少し下に調整（0.0 からスタート）
+                currentVrm.scene.position.y = -0.5;
 
                 // Tポーズ補正
                 const h = currentVrm.humanoid;
@@ -123,37 +132,31 @@
             (e) => { stVrm.innerText = "Error"; stVrm.className = "ng"; }
         );
 
-        // --- 3. Toggle Button (背景切り替え) ---
+        // 3. Toggle (映像をうっすら残す)
         toggleBtn.addEventListener('click', () => {
             if(!currentVrm) return;
             isAvatarMode = !isAvatarMode;
-            
             const avatarCanvas = document.getElementById('avatar-canvas');
 
             if(isAvatarMode) {
-                // アバターON
                 avatarCanvas.style.display = 'block';
                 skeletonCanvas.style.display = 'none';
                 
-                // ★カメラ映像を完全に消す（背景色が見えるようになる）
-                videoElement.style.opacity = "0"; 
+                // ★完全に消さず、0.1（うっすら）残します。これで位置ズレを確認できます。
+                videoElement.style.opacity = "0.1"; 
                 
                 toggleBtn.innerText = "STOP";
-                toggleBtn.style.opacity = "0.5"; // ボタンを目立たなくする
+                toggleBtn.style.opacity = "0.5";
             } else {
-                // アバターOFF
                 avatarCanvas.style.display = 'none';
                 skeletonCanvas.style.display = 'block';
-                
-                // カメラ映像を戻す
                 videoElement.style.opacity = "1";
-                
                 toggleBtn.innerText = "START VTUBER";
                 toggleBtn.style.opacity = "1";
             }
         });
 
-        // --- 4. AI Loop ---
+        // 4. AI Loop
         const holistic = new Holistic({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`});
         holistic.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7, refineFaceLandmarks: true });
 
@@ -162,22 +165,19 @@
             else { stFace.innerText = "Waiting..."; stFace.className = "ng"; }
 
             if(!isAvatarMode) {
-                // 骨格表示
                 skelCtx.save();
                 skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
                 drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
                 drawLandmarks(skelCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
                 skelCtx.restore();
             } else if(currentVrm) {
-                // アバター操作
                 
-                // 顔の動き
+                // 顔
                 if (results.faceLandmarks) {
                     const faceRig = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe', video: videoElement});
                     if (faceRig) {
                         const neck = currentVrm.humanoid.getNormalizedBoneNode("neck");
                         if (neck) neck.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(faceRig.head.x, faceRig.head.y, faceRig.head.z)), 0.5);
-                        
                         if(currentVrm.expressionManager){
                             currentVrm.expressionManager.setValue('aa', faceRig.mouth.shape.A);
                             currentVrm.expressionManager.setValue('blinkLeft', 1 - faceRig.eye.l);
@@ -186,7 +186,7 @@
                     }
                 }
 
-                // 体の動き
+                // 体
                 if (results.poseLandmarks && results.poseWorldLandmarks) {
                     const poseRig = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {runtime: 'mediapipe', video: videoElement});
                     if (poseRig) {
@@ -200,6 +200,11 @@
                         rig("leftUpperArm", poseRig.LeftUpperArm);
                         rig("rightLowerArm", poseRig.RightLowerArm);
                         rig("leftLowerArm", poseRig.LeftLowerArm);
+                        // 足（全身用）
+                        rig("rightUpperLeg", poseRig.RightUpperLeg);
+                        rig("leftUpperLeg", poseRig.LeftUpperLeg);
+                        rig("rightLowerLeg", poseRig.RightLowerLeg);
+                        rig("leftLowerLeg", poseRig.LeftLowerLeg);
                     }
                 }
                 currentVrm.update(1.0/30.0);
