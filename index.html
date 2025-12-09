@@ -3,48 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VTuber System with Loader</title>
+    <title>VTuber Final Debug</title>
     <style>
         body { margin: 0; background-color: #111; overflow: hidden; font-family: monospace; }
         .container { position: relative; width: 100vw; height: 100vh; }
         
-        /* 映像とキャンバス */
         video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; z-index: 0; }
         canvas#skeleton-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 1; pointer-events: none; }
         canvas#avatar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; display: none; }
         
-        /* 変身ボタン（初期状態はグレーで押せない） */
         #toggle-btn {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             padding: 15px 40px; font-size: 1.5rem; font-weight: bold;
-            color: #888; background: #333; /* グレー */
-            border: 2px solid #555; border-radius: 50px; 
-            cursor: not-allowed; z-index: 100;
-            transition: all 0.3s;
+            color: #888; background: #333; border: 2px solid #555; border-radius: 50px; 
+            cursor: not-allowed; z-index: 100; transition: all 0.3s;
         }
-        /* 準備完了時のボタンスタイル */
         #toggle-btn.ready {
             color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff);
-            border: none; cursor: pointer;
-            box-shadow: 0 0 15px rgba(255, 0, 204, 0.5);
+            border: none; cursor: pointer; box-shadow: 0 0 15px rgba(255, 0, 204, 0.5);
         }
 
-        /* 読み込みバー */
         #loading-bar-container {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             width: 300px; height: 20px; background: #333; border-radius: 10px;
             z-index: 101; border: 2px solid #555; display: block;
         }
-        #loading-bar {
-            width: 0%; height: 100%; background: #00d2ff; border-radius: 8px;
-            transition: width 0.2s;
-        }
-        #loading-text {
-            position: absolute; top: -30px; left: 0; width: 100%;
-            text-align: center; color: #fff; font-size: 1.2rem;
-        }
+        #loading-bar { width: 0%; height: 100%; background: #00d2ff; border-radius: 8px; transition: width 0.2s; }
+        #loading-text { position: absolute; top: -30px; left: 0; width: 100%; text-align: center; color: #fff; font-size: 1.2rem; }
 
-        /* ログ表示 */
         #log { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.5); padding: 5px; z-index: 100; }
         .error-log { color: #ff3333 !important; font-weight: bold; }
     </style>
@@ -55,16 +41,14 @@
         <canvas id="skeleton-canvas"></canvas>
     </div>
 
-    <!-- 読み込みバー -->
     <div id="loading-bar-container">
-        <div id="loading-text">Downloading VRM... 0%</div>
+        <div id="loading-text">Downloading... 0%</div>
         <div id="loading-bar"></div>
     </div>
 
     <button id="toggle-btn" disabled>Loading Model...</button>
-    <div id="log">Initializing System...</div>
+    <div id="log">Initializing...</div>
 
-    <!-- ライブラリ -->
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
@@ -83,23 +67,32 @@
         const loadingBar = document.getElementById('loading-bar');
         const loadingText = document.getElementById('loading-text');
 
-// ↓ 名前をシンプルにしました
-const VRM_FILE_PATH = './avatar.vrm';
+        // ★ファイル名は間違いないのでそのまま
+        const VRM_FILE_PATH = './avatar.vrm';
 
         let currentVrm = null;
         let isAvatarMode = false;
 
-        // --- 1. Three.js Setup ---
+        // --- 1. Three.js Setup (3Dワールドを作る) ---
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.domElement.id = 'avatar-canvas';
         document.querySelector('.container').appendChild(renderer.domElement);
         
         const scene = new THREE.Scene();
+        // カメラ設定
         const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
-        camera.position.set(0.0, 1.3, 4.5);
+        camera.position.set(0.0, 1.3, 4.5); // デフォルト位置
         
         scene.add(new THREE.DirectionalLight(0xffffff));
         scene.add(new THREE.AmbientLight(0x404040));
+
+        // ★テスト用：赤い箱を追加（これが表示されれば3D機能は正常）
+        const testCube = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.3, 0.3),
+            new THREE.MeshBasicMaterial({ color: 0xff0000 })
+        );
+        testCube.position.set(1.5, 1.0, 0.0); // 画面右側に配置
+        scene.add(testCube);
 
         // --- 2. Resize ---
         function resize() {
@@ -114,80 +107,100 @@ const VRM_FILE_PATH = './avatar.vrm';
         window.addEventListener('resize', resize);
         resize();
 
-        // --- 3. VRM Loading with Progress Bar ---
+        // --- 3. VRM Loading ---
         const loader = new THREE.GLTFLoader();
         loader.register((parser) => new THREE_VRM.VRMLoaderPlugin(parser));
         
         loader.load(
             VRM_FILE_PATH,
-            (gltf) => { // 成功時
+            (gltf) => {
                 currentVrm = gltf.userData.vrm;
                 scene.add(currentVrm.scene);
-                currentVrm.scene.rotation.y = Math.PI;
+                currentVrm.scene.rotation.y = Math.PI; // カメラに向ける
+
+                // ★アバターのサイズ自動調整ロジック
+                const box = new THREE.Box3().setFromObject(currentVrm.scene);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
                 
+                logDiv.innerText = `Size: ${size.y.toFixed(2)}m`; // ログにサイズを表示
+
+                // もし小さすぎたら拡大する、大きすぎたら縮小する
+                // 一般的なVRMは身長1.5m前後。もし0.01mとかなら100倍する。
+                if (size.y < 0.1) {
+                    currentVrm.scene.scale.set(100, 100, 100);
+                    logDiv.innerText += " (Scaled x100)";
+                } else if (size.y > 10) {
+                    currentVrm.scene.scale.set(0.1, 0.1, 0.1);
+                    logDiv.innerText += " (Scaled x0.1)";
+                }
+
                 // Tポーズ補正
                 const human = currentVrm.humanoid;
                 if(human.getNormalizedBoneNode('leftUpperArm')) human.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.2;
                 if(human.getNormalizedBoneNode('rightUpperArm')) human.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2;
 
                 // UI更新
-                loadingContainer.style.display = 'none'; // バーを消す
-                toggleBtn.disabled = false; // ボタン有効化
-                toggleBtn.classList.add('ready'); // 色をつける
+                loadingContainer.style.display = 'none';
+                toggleBtn.disabled = false;
+                toggleBtn.classList.add('ready');
                 toggleBtn.innerText = "スキン装着 (Transform)";
-                logDiv.innerText = "Model Loaded! Ready.";
             },
-            (progress) => { // 読み込み中
+            (progress) => {
                 const percent = Math.floor(100.0 * (progress.loaded / progress.total));
                 loadingBar.style.width = percent + "%";
                 loadingText.innerText = `Downloading... ${percent}%`;
             },
-            (error) => { // エラー時
+            (error) => {
                 console.error(error);
                 loadingText.innerText = "Download Failed!";
                 loadingBar.style.background = "red";
-                logDiv.innerText = "Error: VRM File Not Found or Too Large.";
+                logDiv.innerText = "Load Error.";
                 logDiv.className = "error-log";
             }
         );
 
-        // --- 4. Button Action ---
+        // --- 4. Toggle Button ---
         toggleBtn.addEventListener('click', () => {
-            if (!currentVrm) return; // まだ読込終わってなければ無視
+            if (!currentVrm) return;
             isAvatarMode = !isAvatarMode;
             if (isAvatarMode) {
                 toggleBtn.innerText = "骨格に戻る";
                 document.getElementById('avatar-canvas').style.display = 'block';
                 skeletonCanvas.style.display = 'none';
                 videoElement.style.opacity = "0.3";
+                logDiv.innerText = "Mode: 3D Avatar";
             } else {
                 toggleBtn.innerText = "スキン装着";
                 document.getElementById('avatar-canvas').style.display = 'none';
                 skeletonCanvas.style.display = 'block';
                 videoElement.style.opacity = "1.0";
+                logDiv.innerText = "Mode: Skeleton";
             }
         });
 
         // --- 5. Tracking Loop ---
         const holistic = new Holistic({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`});
         holistic.setOptions({
-            modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7, refineFaceLandmarks: true
+            modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
         });
 
         holistic.onResults((results) => {
-            // VRM読み込み失敗してたら何もしない
-            if (!currentVrm && isAvatarMode) return;
-
             if (!isAvatarMode) {
-                // Skeleton Mode
+                // Skeleton
                 skelCtx.save();
                 skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
                 drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
                 drawLandmarks(skelCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
                 skelCtx.restore();
             } else {
-                // Avatar Mode
+                // Avatar
+                // 箱を回す（生存確認用）
+                testCube.rotation.x += 0.05;
+                testCube.rotation.y += 0.05;
+
                 if (currentVrm && results.poseLandmarks && results.poseWorldLandmarks) {
+                    // ここでアバターを動かす処理
                     const rigRotation = (name, rot, damp = 1, lerp = 0.3) => {
                         if (!rot) return;
                         const node = currentVrm.humanoid.getNormalizedBoneNode(name);
@@ -195,7 +208,6 @@ const VRM_FILE_PATH = './avatar.vrm';
                         const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x * damp, rot.y * damp, rot.z * damp));
                         node.quaternion.slerp(q, lerp);
                     };
-
                     const pose = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {runtime: 'mediapipe', video: videoElement});
                     const face = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe', video: videoElement});
                     
@@ -208,17 +220,16 @@ const VRM_FILE_PATH = './avatar.vrm';
                         rigRotation("leftUpperArm", pose.LeftUpperArm, 1);
                         rigRotation("leftLowerArm", pose.LeftLowerArm, 1);
                     }
-                    if (face) {
-                        rigRotation("neck", face.head, 0.7);
-                    }
+                    if (face) rigRotation("neck", face.head, 0.7);
                     
                     currentVrm.update(1.0 / 30.0);
-                    renderer.render(scene, camera);
                 }
+                // ★レンダリング命令（これが抜けてると画面が更新されない）
+                renderer.render(scene, camera);
             }
         });
 
-        // --- 6. Start Camera ---
+        // --- 6. Camera Start ---
         window.onload = function() {
             if (typeof Camera === 'undefined') return;
             const cameraUtils = new Camera(videoElement, {
