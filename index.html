@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VTuber Diagnostic</title>
+    <title>VTuber Final Final</title>
     <style>
         body { margin: 0; background-color: #111; overflow: hidden; font-family: monospace; }
         .container { position: relative; width: 100vw; height: 100vh; }
@@ -12,16 +12,14 @@
         #avatar-canvas { z-index: 2; display: none; }
         #skeleton-canvas { z-index: 1; transform: scaleX(-1); }
         
-        /* 診断パネル */
         #status-panel {
-            position: absolute; top: 10px; left: 10px; width: 300px;
+            position: absolute; top: 10px; left: 10px; width: 320px;
             background: rgba(0, 0, 0, 0.8); color: #fff; padding: 10px;
             border-radius: 8px; z-index: 1000; font-size: 12px; border: 1px solid #555;
         }
         .status-item { margin-bottom: 5px; border-bottom: 1px solid #444; padding-bottom: 2px; }
         .ok { color: #00ff00; font-weight: bold; }
-        .ng { color: #ff0000; font-weight: bold; }
-        .warn { color: #ffff00; font-weight: bold; }
+        .ng { color: #ff3333; font-weight: bold; }
 
         #toggle-btn {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
@@ -37,11 +35,9 @@
 </head>
 <body>
     <div id="status-panel">
-        <div class="status-item">System: <span id="st-system">Init...</span></div>
-        <div class="status-item">VRM Model: <span id="st-vrm" class="warn">Loading...</span></div>
-        <div class="status-item">MediaPipe AI: <span id="st-ai" class="ng">Waiting...</span></div>
-        <div class="status-item">Pose Data: <span id="st-pose" class="ng">No Data</span></div>
-        <div class="status-item">Calc(Kalidokit): <span id="st-calc" class="ng">Stopped</span></div>
+        <div class="status-item">VRM Model: <span id="st-vrm" class="ng">Loading...</span></div>
+        <div class="status-item">Pose(Body): <span id="st-pose" class="ng">Waiting...</span></div>
+        <div class="status-item">Face(Head): <span id="st-face" class="ng">Waiting...</span></div>
     </div>
 
     <div class="container">
@@ -51,7 +47,6 @@
 
     <button id="toggle-btn" disabled>Loading...</button>
 
-    <!-- ライブラリ -->
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
@@ -66,12 +61,9 @@
         const skelCtx = skeletonCanvas.getContext('2d');
         const toggleBtn = document.getElementById('toggle-btn');
         
-        // ステータス表示用
-        const stSystem = document.getElementById('st-system');
         const stVrm = document.getElementById('st-vrm');
-        const stAi = document.getElementById('st-ai');
         const stPose = document.getElementById('st-pose');
-        const stCalc = document.getElementById('st-calc');
+        const stFace = document.getElementById('st-face');
 
         const VRM_FILE_PATH = './avatar.vrm';
         let currentVrm = null;
@@ -84,15 +76,10 @@
         
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
-        camera.position.set(0.0, 1.4, 1.5); // ★カメラを少し近づけました
+        camera.position.set(0.0, 1.4, 1.5); 
         
         scene.add(new THREE.DirectionalLight(0xffffff));
         scene.add(new THREE.AmbientLight(0x404040));
-
-        // テスト用Box
-        const testCube = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.2,0.2), new THREE.MeshBasicMaterial({color:0xff0000}));
-        testCube.position.set(0.8, 1.5, 0);
-        scene.add(testCube);
 
         function resize() {
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -112,12 +99,11 @@
                 scene.add(currentVrm.scene);
                 currentVrm.scene.rotation.y = Math.PI;
                 
-                // 初期ポーズ
                 const h = currentVrm.humanoid;
                 if(h.getNormalizedBoneNode('leftUpperArm')) h.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.2;
                 if(h.getNormalizedBoneNode('rightUpperArm')) h.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2;
 
-                stVrm.innerText = "OK (Loaded)";
+                stVrm.innerText = "OK (Ready)";
                 stVrm.className = "ok";
                 toggleBtn.disabled = false;
                 toggleBtn.classList.add('ready');
@@ -150,16 +136,30 @@
         // 4. MediaPipe
         const holistic = new Holistic({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`});
         holistic.setOptions({
-            modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7
+            modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7, refineFaceLandmarks: true
         });
 
         holistic.onResults((results) => {
-            stSystem.innerText = "Running";
-            stAi.innerText = "OK (Receiving)";
-            stAi.className = "ok";
+            // ■ 診断表示（モードに関係なく更新）
+            if(results.poseLandmarks) {
+                stPose.innerText = "OK (Found)";
+                stPose.className = "ok";
+            } else {
+                stPose.innerText = "NG (Not Found)";
+                stPose.className = "ng";
+            }
 
-            // 骨格モード
+            if(results.faceLandmarks) {
+                stFace.innerText = "OK (Found)";
+                stFace.className = "ok";
+            } else {
+                stFace.innerText = "NG (Not Found)";
+                stFace.className = "ng";
+            }
+
+            // ■ 描画処理
             if(!isAvatarMode) {
+                // 骨格モード
                 skelCtx.save();
                 skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
                 drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
@@ -167,59 +167,47 @@
                 skelCtx.restore();
             } else {
                 // アバターモード
-                testCube.rotation.x += 0.05; // 箱回転
-                
-                // データチェック
-                if(results.poseLandmarks) {
-                    stPose.innerText = "OK (Landmarks Found)";
-                    stPose.className = "ok";
+                if(currentVrm) {
                     
-                    // Kalidokit計算
-                    // poseWorldLandmarksが無い場合はposeLandmarksで代用（フォールバック）
-                    const lm3d = results.poseWorldLandmarks || results.poseLandmarks; 
-
-                    let pose = null;
-                    try {
-                        pose = Kalidokit.Pose.solve(lm3d, results.poseLandmarks, {runtime: 'mediapipe', video: videoElement});
-                    } catch(e) {
-                        console.error(e);
-                    }
-
-                    if(pose) {
-                        stCalc.innerText = "OK (Solving)";
-                        stCalc.className = "ok";
-                        
-                        // 反映
-                        const rig = (name, rot) => {
-                            if(!rot) return;
-                            const node = currentVrm.humanoid.getNormalizedBoneNode(name);
-                            if(node) {
-                                node.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z)), 0.3);
+                    // A. 顔の計算と反映（独立して実行）
+                    if (results.faceLandmarks) {
+                        const faceRig = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe', video: videoElement});
+                        if (faceRig) {
+                            const node = currentVrm.humanoid.getNormalizedBoneNode("neck");
+                            if (node) {
+                                // 首の回転
+                                const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(faceRig.head.x, faceRig.head.y, faceRig.head.z));
+                                node.quaternion.slerp(q, 0.5);
                             }
-                        };
-                        
-                        rig("hips", pose.Hips.rotation);
-                        rig("spine", pose.Spine);
-                        rig("chest", pose.Spine);
-                        rig("rightUpperArm", pose.RightUpperArm);
-                        rig("rightLowerArm", pose.RightLowerArm);
-                        rig("leftUpperArm", pose.LeftUpperArm);
-                        rig("leftLowerArm", pose.LeftLowerArm);
-
-                        // 顔と手も
-                        const face = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe'});
-                        if(face) rig("neck", face.head);
-                        
-                    } else {
-                        stCalc.innerText = "NG (No Solution)";
-                        stCalc.className = "ng";
+                            // 口パク・まばたき
+                            if(currentVrm.expressionManager){
+                                currentVrm.expressionManager.setValue('aa', faceRig.mouth.shape.A);
+                                currentVrm.expressionManager.setValue('blinkLeft', 1 - faceRig.eye.l);
+                                currentVrm.expressionManager.setValue('blinkRight', 1 - faceRig.eye.r);
+                            }
+                        }
                     }
+
+                    // B. 体の計算と反映
+                    if (results.poseLandmarks && results.poseWorldLandmarks) {
+                        const poseRig = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {runtime: 'mediapipe', video: videoElement});
+                        if (poseRig) {
+                            const rig = (name, rot) => {
+                                if(!rot) return;
+                                const node = currentVrm.humanoid.getNormalizedBoneNode(name);
+                                if(node) node.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z)), 0.3);
+                            };
+                            rig("hips", poseRig.Hips.rotation);
+                            rig("spine", poseRig.Spine);
+                            rig("rightUpperArm", poseRig.RightUpperArm);
+                            rig("leftUpperArm", poseRig.LeftUpperArm);
+                            rig("rightLowerArm", poseRig.RightLowerArm); // 肘
+                            rig("leftLowerArm", poseRig.LeftLowerArm); // 肘
+                        }
+                    }
+
                     currentVrm.update(1.0/30.0);
                     renderer.render(scene, camera);
-
-                } else {
-                    stPose.innerText = "NG (Body Not Found)";
-                    stPose.className = "ng";
                 }
             }
         });
