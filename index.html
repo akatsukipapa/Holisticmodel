@@ -83,8 +83,9 @@
         const loadingBar = document.getElementById('loading-bar');
         const loadingText = document.getElementById('loading-text');
 
-        // ★ファイル名はここを確認してください
-        const VRM_FILE_PATH = './3453930163915015062.vrm';
+// const VRM_FILE_PATH = './3453930163915015062.vrm'; 
+// ↓ テスト用に、Pixiv公式のサンプルモデル（女の子）を指定します
+const VRM_FILE_PATH = 'https://pixiv.github.io/three-vrm/examples/models/three-vrm-girl.vrm';
 
         let currentVrm = null;
         let isAvatarMode = false;
