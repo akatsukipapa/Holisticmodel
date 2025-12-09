@@ -3,64 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web VTuber Demo (Fixed)</title>
+    <title>Skeleton to Avatar</title>
     <style>
-        body { margin: 0; background-color: #222; overflow: hidden; font-family: sans-serif; }
+        body { margin: 0; background-color: #111; overflow: hidden; font-family: sans-serif; }
         
+        /* コンテナ（映像を重ね合わせるための箱） */
+        .container { position: relative; width: 100vw; height: 100vh; }
+
+        /* 1. カメラ映像 */
         #input-video {
-            position: absolute; bottom: 20px; right: 20px;
-            width: 320px; height: 180px;
-            transform: scaleX(-1); border-radius: 10px; border: 2px solid #fff; z-index: 2;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            transform: scaleX(-1); object-fit: cover; z-index: 0;
         }
 
-        canvas { display: block; width: 100vw; height: 100vh; }
-
-        #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            color: #00d2ff; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; z-index: 100;
+        /* 2. 骨格描画用キャンバス (2D) */
+        #skeleton-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            transform: scaleX(-1); z-index: 1; pointer-events: none;
         }
 
-        /* 動作状況を表示するデバッグ文字 */
-        #debug-info {
-            position: absolute; top: 10px; left: 10px;
-            color: yellow; background: rgba(0,0,0,0.5); padding: 5px; z-index: 101; pointer-events: none;
+        /* 3. アバター描画用キャンバス (3D/Three.js) - 最初は隠しておく */
+        #avatar-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2; pointer-events: none;
+            display: none; /* 初期状態は非表示 */
+        }
+
+        /* 変身ボタン */
+        #toggle-btn {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            padding: 15px 40px; font-size: 1.5rem; font-weight: bold;
+            color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff);
+            border: none; border-radius: 50px; cursor: pointer; z-index: 100;
+            box-shadow: 0 0 15px rgba(255, 0, 204, 0.5);
+            transition: transform 0.1s;
+        }
+        #toggle-btn:active { transform: translateX(-50%) scale(0.95); }
+
+        /* ログ表示 */
+        #log-container {
+            position: absolute; top: 10px; left: 10px; color: #0f0; 
+            background: rgba(0,0,0,0.5); padding: 5px; z-index: 100; font-family: monospace;
         }
     </style>
 </head>
 <body>
 
-    <div id="loading">LOADING SYSTEM...</div>
-    <div id="debug-info">Initializing...</div>
-    
-    <video id="input-video" playsinline muted autoplay></video>
+    <div class="container">
+        <!-- カメラ -->
+        <video id="input-video" playsinline muted autoplay></video>
+        <!-- 骨格 (2D) -->
+        <canvas id="skeleton-canvas"></canvas>
+        <!-- アバター (3D) -->
+        <!-- Three.jsはJS内でCanvasを生成してここに追加します -->
+    </div>
 
-    <!-- ■ 修正点1: MediaPipeのバージョンを固定して読み込む -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1635989137/holistic.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1632432244/camera_utils.js" crossorigin="anonymous"></script>
-    
-    <!-- Three.js & VRM -->
+    <button id="toggle-btn">スキン装着 (Transform)</button>
+    <div id="log-container">Loading System...</div>
+
+    <!-- ライブラリ群 -->
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
     
-    <!-- Kalidokit -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
 
     <script>
-        const VRM_FILE_PATH = './3453930163915015062.vrm'; 
-        const debugInfo = document.getElementById('debug-info');
+        const logDiv = document.getElementById('log-container');
+        const skeletonCanvas = document.getElementById('skeleton-canvas');
+        const skelCtx = skeletonCanvas.getContext('2d');
+        const videoElement = document.getElementById('input-video');
+        const toggleBtn = document.getElementById('toggle-btn');
+        const VRM_FILE_PATH = './3453930163915015062.vrm';
 
-        // --- Three.js 初期化 ---
+        let isAvatarMode = false; // 現在のモード管理
+        let currentVrm = null;
+
+        // キャンバスサイズ調整
+        function resizeCanvas() {
+            skeletonCanvas.width = window.innerWidth;
+            skeletonCanvas.height = window.innerHeight;
+            if(renderer) {
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+            }
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- Three.js (アバター用) 設定 ---
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
-        document.body.appendChild(renderer.domElement);
+        renderer.domElement.id = 'avatar-canvas'; // CSSで制御するためにID付与
+        document.querySelector('.container').appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x333333);
+        // アバターモード時は背景透明（カメラ映像が見えるようにしたければalpha:trueのまま）
+        // ここでは「アバターON」＝「VR空間」っぽく見せるため、少し暗くする例
+        // scene.background = new THREE.Color(0x000000); // 必要なら有効化
 
         const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
-        camera.position.set(0.0, 1.4, 3.0); 
+        camera.position.set(0.0, 1.3, 4.5);
 
         const light = new THREE.DirectionalLight(0xffffff);
         light.position.set(1.0, 1.0, 1.0).normalize();
@@ -68,43 +116,50 @@
         scene.add(new THREE.AmbientLight(0x404040));
 
         // --- VRM読み込み ---
-        let currentVrm = null;
         const loader = new THREE.GLTFLoader();
         loader.register((parser) => new THREE_VRM.VRMLoaderPlugin(parser));
 
-        loader.load(
-            VRM_FILE_PATH,
-            (gltf) => {
-                const vrm = gltf.userData.vrm;
-                currentVrm = vrm;
-                scene.add(vrm.scene);
-                vrm.scene.rotation.y = Math.PI; 
-                
-                // 腕を少し下げる（Tポーズ緩和）
-                const leftUpperArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
-                const rightUpperArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
-                if(leftUpperArm) leftUpperArm.rotation.z = 1.2;
-                if(rightUpperArm) rightUpperArm.rotation.z = -1.2;
+        loader.load(VRM_FILE_PATH, (gltf) => {
+            const vrm = gltf.userData.vrm;
+            currentVrm = vrm;
+            scene.add(vrm.scene);
+            vrm.scene.rotation.y = Math.PI;
+            
+            // Tポーズ緩和
+            const leftArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+            const rightArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+            if(leftArm) leftArm.rotation.z = 1.2;
+            if(rightArm) rightArm.rotation.z = -1.2;
 
-                document.getElementById('loading').style.display = 'none';
-                debugInfo.innerText = "VRM Loaded. Waiting for AI...";
-                console.log("VRM Loaded!");
-            },
-            (progress) => console.log('Loading VRM...', 100.0 * (progress.loaded / progress.total), '%'),
-            (error) => {
-                console.error(error);
-                debugInfo.innerText = "Error loading VRM.";
+            logDiv.innerText = "Ready! Press button to transform.";
+        }, undefined, (err) => logDiv.innerText = "VRM Error: " + err);
+
+
+        // --- ボタンクリック時の処理 ---
+        toggleBtn.addEventListener('click', () => {
+            isAvatarMode = !isAvatarMode; // モード反転
+
+            if (isAvatarMode) {
+                // アバターモードへ
+                toggleBtn.innerText = "骨格に戻る (Skeleton)";
+                toggleBtn.style.background = "#333";
+                document.getElementById('avatar-canvas').style.display = 'block'; // 3D表示
+                skeletonCanvas.style.display = 'none'; // 2D非表示
+                // 背景を少し暗くしても雰囲気が出る
+                videoElement.style.opacity = "0.3"; 
+            } else {
+                // 骨格モードへ
+                toggleBtn.innerText = "スキン装着 (Transform)";
+                toggleBtn.style.background = "linear-gradient(45deg, #ff00cc, #3333ff)";
+                document.getElementById('avatar-canvas').style.display = 'none'; // 3D非表示
+                skeletonCanvas.style.display = 'block'; // 2D表示
+                videoElement.style.opacity = "1.0";
             }
-        );
+        });
 
-        // --- MediaPipe Holistic 設定 ---
-        const videoElement = document.getElementById('input-video');
 
-        // ■ 修正点2: locateFileのURLもバージョン指定版にする
-        const holistic = new Holistic({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1635989137/${file}`;
-        }});
-
+        // --- MediaPipe 設定 ---
+        const holistic = new Holistic({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`});
         holistic.setOptions({
             modelComplexity: 1,
             smoothLandmarks: true,
@@ -112,93 +167,81 @@
             minTrackingConfidence: 0.7,
             refineFaceLandmarks: true
         });
-
         holistic.onResults(onResults);
 
-        // --- 描画ループ ---
-        function onResults(results) {
-            // 動作確認用：左上の文字を更新
-            debugInfo.innerText = "Tracking Active! (" + new Date().toLocaleTimeString() + ")";
 
-            animateVRM(results);
-            renderer.render(scene, camera);
+        // --- ループ処理 ---
+        function onResults(results) {
+            
+            if (!isAvatarMode) {
+                // ■ モードA：骨格描画 (Skeleton)
+                skelCtx.save();
+                skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
+                
+                // 線の描画 (前のコードと同じロジック)
+                drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
+                drawLandmarks(skelCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
+                drawConnectors(skelCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {color: '#CC0000', lineWidth: 3});
+                drawConnectors(skelCtx, results.rightHandLandmarks, HAND_CONNECTIONS, {color: '#00CC00', lineWidth: 3});
+                
+                skelCtx.restore();
+
+            } else {
+                // ■ モードB：アバター操作 (Avatar)
+                if (currentVrm) {
+                    animateVRM(results);
+                    renderer.render(scene, camera);
+                }
+            }
         }
 
+        // --- Kalidokitによる計算 (アバターモード用) ---
         function animateVRM(results) {
-            if (!currentVrm) return;
+            // エラー回避のためデータ存在チェック
+            if (!results.poseLandmarks || !results.poseWorldLandmarks) return;
 
-            // Pose, Face, Hand の計算
-            const rigidPose = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {
-                runtime: 'mediapipe',
-                video: videoElement
-            });
-            const rigidFace = Kalidokit.Face.solve(results.faceLandmarks, {
-                runtime: 'mediapipe',
-                video: videoElement
-            });
-            const rigidLeftHand = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
-            const rigidRightHand = Kalidokit.Hand.solve(results.rightHandLandmarks, "Right");
+            const rigidPose = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {runtime: 'mediapipe', video: videoElement});
+            const rigidFace = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe', video: videoElement});
+            const rigidLeft = results.leftHandLandmarks ? Kalidokit.Hand.solve(results.leftHandLandmarks, "Left") : null;
+            const rigidRight = results.rightHandLandmarks ? Kalidokit.Hand.solve(results.rightHandLandmarks, "Right") : null;
 
-            // 回転適用関数
             const rigRotation = (name, rotation, dampener = 1, lerpAmount = 0.3) => {
                 if (!rotation) return;
                 const part = currentVrm.humanoid.getNormalizedBoneNode(name);
                 if (!part) return;
-                
-                const euler = new THREE.Euler(
-                    rotation.x * dampener, 
-                    rotation.y * dampener, 
-                    rotation.z * dampener, 
-                    rotation.rotationOrder || "XYZ"
-                );
+                const euler = new THREE.Euler(rotation.x * dampener, rotation.y * dampener, rotation.z * dampener);
                 const quaternion = new THREE.Quaternion().setFromEuler(euler);
                 part.quaternion.slerp(quaternion, lerpAmount);
             };
 
-            // Body
             if (rigidPose) {
                 rigRotation("hips", rigidPose.Hips.rotation, 0.7);
-                rigRotation("chest", rigidPose.Spine, 0.25, .3);
-                rigRotation("spine", rigidPose.Spine, 0.45, .3);
-                rigRotation("rightUpperArm", rigidPose.RightUpperArm, 1, .3);
-                rigRotation("rightLowerArm", rigidPose.RightLowerArm, 1, .3);
-                rigRotation("leftUpperArm", rigidPose.LeftUpperArm, 1, .3);
-                rigRotation("leftLowerArm", rigidPose.LeftLowerArm, 1, .3);
+                rigRotation("chest", rigidPose.Spine, 0.25);
+                rigRotation("spine", rigidPose.Spine, 0.45);
+                rigRotation("rightUpperArm", rigidPose.RightUpperArm, 1);
+                rigRotation("rightLowerArm", rigidPose.RightLowerArm, 1);
+                rigRotation("leftUpperArm", rigidPose.LeftUpperArm, 1);
+                rigRotation("leftLowerArm", rigidPose.LeftLowerArm, 1);
             }
-
-            // Hands
-            if (rigidLeftHand) rigRotation("leftHand", rigidLeftHand.LeftWrist);
-            if (rigidRightHand) rigRotation("rightHand", rigidRightHand.RightWrist);
-
-            // Face
+            if (rigidLeft) rigRotation("leftHand", rigidLeft.LeftWrist);
+            if (rigidRight) rigRotation("rightHand", rigidRight.RightWrist);
             if (rigidFace) {
                 rigRotation("neck", rigidFace.head, 0.7);
                 if(currentVrm.expressionManager){
-                    const openAmount = rigidFace.mouth.shape.A;
-                    currentVrm.expressionManager.setValue('aa', openAmount);
+                    currentVrm.expressionManager.setValue('aa', rigidFace.mouth.shape.A);
                     currentVrm.expressionManager.setValue('blinkLeft', 1 - rigidFace.eye.l);
                     currentVrm.expressionManager.setValue('blinkRight', 1 - rigidFace.eye.r);
                 }
             }
-            
             currentVrm.update(1.0 / 30.0);
         }
 
-        // --- カメラ起動 ---
+        // カメラ開始
         const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => {
-                await holistic.send({image: videoElement});
-            },
-            width: 640,
-            height: 480
+            onFrame: async () => { await holistic.send({image: videoElement}); },
+            width: 640, height: 480
         });
         cameraUtils.start();
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
 
     </script>
 </body>
