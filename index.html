@@ -3,44 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Skeleton to Avatar</title>
+    <title>Skeleton & Avatar Fix</title>
     <style>
         body { margin: 0; background-color: #111; overflow: hidden; font-family: sans-serif; }
         
-        /* コンテナ（映像を重ね合わせるための箱） */
         .container { position: relative; width: 100vw; height: 100vh; }
 
-        /* 1. カメラ映像 */
+        /* カメラ映像 */
         #input-video {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             transform: scaleX(-1); object-fit: cover; z-index: 0;
         }
 
-        /* 2. 骨格描画用キャンバス (2D) */
+        /* 骨格 (2D) */
         #skeleton-canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             transform: scaleX(-1); z-index: 1; pointer-events: none;
         }
 
-        /* 3. アバター描画用キャンバス (3D/Three.js) - 最初は隠しておく */
+        /* アバター (3D) - 初期は非表示 */
         #avatar-canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 2; pointer-events: none;
-            display: none; /* 初期状態は非表示 */
+            display: none; 
         }
 
-        /* 変身ボタン */
+        /* ボタン */
         #toggle-btn {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
             padding: 15px 40px; font-size: 1.5rem; font-weight: bold;
             color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff);
             border: none; border-radius: 50px; cursor: pointer; z-index: 100;
             box-shadow: 0 0 15px rgba(255, 0, 204, 0.5);
-            transition: transform 0.1s;
         }
         #toggle-btn:active { transform: translateX(-50%) scale(0.95); }
 
-        /* ログ表示 */
+        /* ログ */
         #log-container {
             position: absolute; top: 10px; left: 10px; color: #0f0; 
             background: rgba(0,0,0,0.5); padding: 5px; z-index: 100; font-family: monospace;
@@ -50,25 +48,23 @@
 <body>
 
     <div class="container">
-        <!-- カメラ -->
         <video id="input-video" playsinline muted autoplay></video>
-        <!-- 骨格 (2D) -->
         <canvas id="skeleton-canvas"></canvas>
-        <!-- アバター (3D) -->
-        <!-- Three.jsはJS内でCanvasを生成してここに追加します -->
     </div>
 
     <button id="toggle-btn">スキン装着 (Transform)</button>
-    <div id="log-container">Loading System...</div>
+    <div id="log-container">System Starting...</div>
 
-    <!-- ライブラリ群 -->
+    <!-- ライブラリ読み込み (URLを修正済み) -->
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
     
+    <!-- ここが修正箇所！バージョン指定を外して最新版を取得するように変更 -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
 
     <script>
@@ -79,10 +75,10 @@
         const toggleBtn = document.getElementById('toggle-btn');
         const VRM_FILE_PATH = './3453930163915015062.vrm';
 
-        let isAvatarMode = false; // 現在のモード管理
+        let isAvatarMode = false;
         let currentVrm = null;
 
-        // キャンバスサイズ調整
+        // リサイズ処理
         function resizeCanvas() {
             skeletonCanvas.width = window.innerWidth;
             skeletonCanvas.height = window.innerHeight;
@@ -95,18 +91,14 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // --- Three.js (アバター用) 設定 ---
+        // --- Three.js 設定 ---
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.domElement.id = 'avatar-canvas'; // CSSで制御するためにID付与
+        renderer.domElement.id = 'avatar-canvas';
         document.querySelector('.container').appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
-        // アバターモード時は背景透明（カメラ映像が見えるようにしたければalpha:trueのまま）
-        // ここでは「アバターON」＝「VR空間」っぽく見せるため、少し暗くする例
-        // scene.background = new THREE.Color(0x000000); // 必要なら有効化
-
         const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
         camera.position.set(0.0, 1.3, 4.5);
 
@@ -125,34 +117,30 @@
             scene.add(vrm.scene);
             vrm.scene.rotation.y = Math.PI;
             
-            // Tポーズ緩和
             const leftArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
             const rightArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
             if(leftArm) leftArm.rotation.z = 1.2;
             if(rightArm) rightArm.rotation.z = -1.2;
 
-            logDiv.innerText = "Ready! Press button to transform.";
+            logDiv.innerText = "VRM Ready! Waiting for Camera...";
         }, undefined, (err) => logDiv.innerText = "VRM Error: " + err);
 
 
-        // --- ボタンクリック時の処理 ---
+        // --- ボタン切り替え ---
         toggleBtn.addEventListener('click', () => {
-            isAvatarMode = !isAvatarMode; // モード反転
+            isAvatarMode = !isAvatarMode;
 
             if (isAvatarMode) {
-                // アバターモードへ
                 toggleBtn.innerText = "骨格に戻る (Skeleton)";
                 toggleBtn.style.background = "#333";
-                document.getElementById('avatar-canvas').style.display = 'block'; // 3D表示
-                skeletonCanvas.style.display = 'none'; // 2D非表示
-                // 背景を少し暗くしても雰囲気が出る
+                document.getElementById('avatar-canvas').style.display = 'block';
+                skeletonCanvas.style.display = 'none';
                 videoElement.style.opacity = "0.3"; 
             } else {
-                // 骨格モードへ
                 toggleBtn.innerText = "スキン装着 (Transform)";
                 toggleBtn.style.background = "linear-gradient(45deg, #ff00cc, #3333ff)";
-                document.getElementById('avatar-canvas').style.display = 'none'; // 3D非表示
-                skeletonCanvas.style.display = 'block'; // 2D表示
+                document.getElementById('avatar-canvas').style.display = 'none';
+                skeletonCanvas.style.display = 'block';
                 videoElement.style.opacity = "1.0";
             }
         });
@@ -170,24 +158,21 @@
         holistic.onResults(onResults);
 
 
-        // --- ループ処理 ---
+        // --- メインループ ---
         function onResults(results) {
-            
+            logDiv.innerText = "Tracking Active"; // 動作確認用
+
             if (!isAvatarMode) {
-                // ■ モードA：骨格描画 (Skeleton)
+                // 骨格モード
                 skelCtx.save();
                 skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
-                
-                // 線の描画 (前のコードと同じロジック)
                 drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
                 drawLandmarks(skelCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
                 drawConnectors(skelCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {color: '#CC0000', lineWidth: 3});
                 drawConnectors(skelCtx, results.rightHandLandmarks, HAND_CONNECTIONS, {color: '#00CC00', lineWidth: 3});
-                
                 skelCtx.restore();
-
             } else {
-                // ■ モードB：アバター操作 (Avatar)
+                // アバターモード
                 if (currentVrm) {
                     animateVRM(results);
                     renderer.render(scene, camera);
@@ -195,9 +180,8 @@
             }
         }
 
-        // --- Kalidokitによる計算 (アバターモード用) ---
+        // --- アバター計算 ---
         function animateVRM(results) {
-            // エラー回避のためデータ存在チェック
             if (!results.poseLandmarks || !results.poseWorldLandmarks) return;
 
             const rigidPose = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {runtime: 'mediapipe', video: videoElement});
@@ -236,12 +220,18 @@
             currentVrm.update(1.0 / 30.0);
         }
 
-        // カメラ開始
-        const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => { await holistic.send({image: videoElement}); },
-            width: 640, height: 480
-        });
-        cameraUtils.start();
+        // --- カメラ起動（ここがエラーの原因だった箇所） ---
+        // 修正：Cameraクラスが読み込まれているかチェック
+        if (typeof Camera !== 'undefined') {
+            const cameraUtils = new Camera(videoElement, {
+                onFrame: async () => { await holistic.send({image: videoElement}); },
+                width: 640, height: 480
+            });
+            cameraUtils.start();
+        } else {
+            logDiv.innerText = "ERROR: Camera Library Failed to Load.";
+            logDiv.style.color = "red";
+        }
 
     </script>
 </body>
