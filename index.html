@@ -581,6 +581,14 @@
             }
           }
           // --- 体 (Body) ---
+          // デバッグ: ポーズデータの有無を確認
+          if (Math.random() < 0.02) {
+            console.log("pose check:", {
+              hasLandmarks: !!results.poseLandmarks,
+              hasWorldLandmarks: !!results.poseWorldLandmarks,
+              landmarksCount: results.poseLandmarks?.length || 0
+            });
+          }
           if (results.poseLandmarks && results.poseWorldLandmarks) {
             const poseRig = Kalidokit.Pose.solve(
               results.poseLandmarks,
@@ -664,3 +672,4 @@
     </script>
   </body>
 </html>
+
