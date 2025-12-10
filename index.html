@@ -290,12 +290,7 @@
             scene.add(currentVrm.scene);
             currentVrm.scene.rotation.y = Math.PI;
             currentVrm.scene.position.set(0, 0, 0);
-            // Tポーズ補正
-            const h = currentVrm.humanoid;
-            if (h.getNormalizedBoneNode("leftUpperArm"))
-              h.getNormalizedBoneNode("leftUpperArm").rotation.z = 1.2;
-            if (h.getNormalizedBoneNode("rightUpperArm"))
-              h.getNormalizedBoneNode("rightUpperArm").rotation.z = -1.2;
+            // Tポーズ補正は削除（トラッキングで上書きするため）
             stVrm.innerText = "OK (Ready)";
             stVrm.className = "ok";
             toggleBtn.disabled = false;
@@ -598,24 +593,23 @@
               console.log("poseRig:", poseRig);
             }
             if (poseRig) {
-              const rigRotation = (name, rot, lerpAmount = 0.5) => {
+              // 回転を適用するヘルパー（直接設定）
+              const rigRotation = (name, rot) => {
                 const node = currentVrm.humanoid.getNormalizedBoneNode(name);
                 if (node && rot) {
-                  const targetQuat = new THREE.Quaternion().setFromEuler(
-                    new THREE.Euler(rot.x, rot.y, rot.z)
-                  );
-                  node.quaternion.slerp(targetQuat, lerpAmount);
+                  // 回転値を直接設定（Euler角）
+                  node.rotation.set(rot.x, rot.y, rot.z);
                 }
               };
               // 体幹
               if (poseRig.Hips?.rotation) rigRotation("hips", poseRig.Hips.rotation);
               if (poseRig.Spine) rigRotation("spine", poseRig.Spine);
               if (poseRig.Chest) rigRotation("chest", poseRig.Chest);
-              // 腕（より大きな補間係数で反応を速く）
-              rigRotation("rightUpperArm", poseRig.RightUpperArm, 0.6);
-              rigRotation("leftUpperArm", poseRig.LeftUpperArm, 0.6);
-              rigRotation("rightLowerArm", poseRig.RightLowerArm, 0.6);
-              rigRotation("leftLowerArm", poseRig.LeftLowerArm, 0.6);
+              // 腕
+              rigRotation("rightUpperArm", poseRig.RightUpperArm);
+              rigRotation("leftUpperArm", poseRig.LeftUpperArm);
+              rigRotation("rightLowerArm", poseRig.RightLowerArm);
+              rigRotation("leftLowerArm", poseRig.LeftLowerArm);
               // 手首
               rigRotation("rightHand", poseRig.RightHand);
               rigRotation("leftHand", poseRig.LeftHand);
