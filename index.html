@@ -583,8 +583,8 @@
           // --- 体 (Body) ---
           if (results.poseLandmarks && results.poseWorldLandmarks) {
             const poseRig = Kalidokit.Pose.solve(
-              results.poseWorldLandmarks,
               results.poseLandmarks,
+              results.poseWorldLandmarks,
               {
                 runtime: "mediapipe",
                 video: videoElement,
