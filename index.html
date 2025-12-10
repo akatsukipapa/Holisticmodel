@@ -575,49 +575,86 @@
               }
             }
           }
-          // --- 体 (Body) ---
+          // --- 体 (Body) - 2Dランドマークから直接計算 ---
           if (results.poseLandmarks) {
-            // poseWorldLandmarksがない場合はposeLandmarksを両方に使用
-            const worldLandmarks = results.poseWorldLandmarks || results.poseLandmarks;
+            const lm = results.poseLandmarks;
             
-            const poseRig = Kalidokit.Pose.solve(
-              results.poseLandmarks,
-              worldLandmarks,
-              {
-                runtime: "mediapipe",
-                video: videoElement,
+            // MediaPipeのランドマークインデックス
+            const LEFT_SHOULDER = 11;
+            const RIGHT_SHOULDER = 12;
+            const LEFT_ELBOW = 13;
+            const RIGHT_ELBOW = 14;
+            const LEFT_WRIST = 15;
+            const RIGHT_WRIST = 16;
+            const LEFT_HIP = 23;
+            const RIGHT_HIP = 24;
+            // 2点間の角度を計算するヘルパー
+            const getAngle = (p1, p2) => {
+              return Math.atan2(p2.y - p1.y, p2.x - p1.x);
+            };
+            // スムーズに適用するヘルパー
+            const applyRotation = (boneName, x, y, z, lerp = 0.3) => {
+              const node = currentVrm.humanoid.getNormalizedBoneNode(boneName);
+              if (node) {
+                node.rotation.x += (x - node.rotation.x) * lerp;
+                node.rotation.y += (y - node.rotation.y) * lerp;
+                node.rotation.z += (z - node.rotation.z) * lerp;
               }
-            );
-            // デバッグ: poseRigの内容を確認
-            if (poseRig && Math.random() < 0.02) {
-              console.log("poseRig:", poseRig);
+            };
+            // 右腕 (右肩→右肘の角度)
+            if (lm[RIGHT_SHOULDER] && lm[RIGHT_ELBOW]) {
+              const rightUpperArmAngle = getAngle(lm[RIGHT_SHOULDER], lm[RIGHT_ELBOW]);
+              // VRMのボーンに合わせて変換 (右腕は負の値)
+              applyRotation("rightUpperArm", 0, 0, rightUpperArmAngle + Math.PI / 2);
             }
-            if (poseRig) {
-              // 回転を適用するヘルパー（直接設定）
-              const rigRotation = (name, rot) => {
-                const node = currentVrm.humanoid.getNormalizedBoneNode(name);
-                if (node && rot) {
-                  // 回転値を直接設定（Euler角）
-                  node.rotation.set(rot.x, rot.y, rot.z);
-                }
+            // 左腕 (左肩→左肘の角度)
+            if (lm[LEFT_SHOULDER] && lm[LEFT_ELBOW]) {
+              const leftUpperArmAngle = getAngle(lm[LEFT_SHOULDER], lm[LEFT_ELBOW]);
+              // VRMのボーンに合わせて変換
+              applyRotation("leftUpperArm", 0, 0, leftUpperArmAngle - Math.PI / 2);
+            }
+            // 右前腕 (右肘→右手首の角度)
+            if (lm[RIGHT_ELBOW] && lm[RIGHT_WRIST]) {
+              const rightLowerArmAngle = getAngle(lm[RIGHT_ELBOW], lm[RIGHT_WRIST]);
+              const rightUpperArmAngle = lm[RIGHT_SHOULDER] && lm[RIGHT_ELBOW] 
+                ? getAngle(lm[RIGHT_SHOULDER], lm[RIGHT_ELBOW]) : 0;
+              // 上腕との相対角度
+              const relativeAngle = rightLowerArmAngle - rightUpperArmAngle;
+              applyRotation("rightLowerArm", 0, relativeAngle * 0.5, 0);
+            }
+            // 左前腕 (左肘→左手首の角度)
+            if (lm[LEFT_ELBOW] && lm[LEFT_WRIST]) {
+              const leftLowerArmAngle = getAngle(lm[LEFT_ELBOW], lm[LEFT_WRIST]);
+              const leftUpperArmAngle = lm[LEFT_SHOULDER] && lm[LEFT_ELBOW] 
+                ? getAngle(lm[LEFT_SHOULDER], lm[LEFT_ELBOW]) : 0;
+              // 上腕との相対角度
+              const relativeAngle = leftLowerArmAngle - leftUpperArmAngle;
+              applyRotation("leftLowerArm", 0, -relativeAngle * 0.5, 0);
+            }
+            // 体の傾き (両肩の中点と両腰の中点から計算)
+            if (lm[LEFT_SHOULDER] && lm[RIGHT_SHOULDER] && lm[LEFT_HIP] && lm[RIGHT_HIP]) {
+              const shoulderCenter = {
+                x: (lm[LEFT_SHOULDER].x + lm[RIGHT_SHOULDER].x) / 2,
+                y: (lm[LEFT_SHOULDER].y + lm[RIGHT_SHOULDER].y) / 2
               };
-              // 体幹
-              if (poseRig.Hips?.rotation) rigRotation("hips", poseRig.Hips.rotation);
-              if (poseRig.Spine) rigRotation("spine", poseRig.Spine);
-              if (poseRig.Chest) rigRotation("chest", poseRig.Chest);
-              // 腕
-              rigRotation("rightUpperArm", poseRig.RightUpperArm);
-              rigRotation("leftUpperArm", poseRig.LeftUpperArm);
-              rigRotation("rightLowerArm", poseRig.RightLowerArm);
-              rigRotation("leftLowerArm", poseRig.LeftLowerArm);
-              // 手首
-              rigRotation("rightHand", poseRig.RightHand);
-              rigRotation("leftHand", poseRig.LeftHand);
-              // 足
-              rigRotation("rightUpperLeg", poseRig.RightUpperLeg);
-              rigRotation("leftUpperLeg", poseRig.LeftUpperLeg);
-              rigRotation("rightLowerLeg", poseRig.RightLowerLeg);
-              rigRotation("leftLowerLeg", poseRig.LeftLowerLeg);
+              const hipCenter = {
+                x: (lm[LEFT_HIP].x + lm[RIGHT_HIP].x) / 2,
+                y: (lm[LEFT_HIP].y + lm[RIGHT_HIP].y) / 2
+              };
+              
+              // 肩の傾き（左右）
+              const shoulderTilt = Math.atan2(
+                lm[LEFT_SHOULDER].y - lm[RIGHT_SHOULDER].y,
+                lm[LEFT_SHOULDER].x - lm[RIGHT_SHOULDER].x
+              );
+              applyRotation("spine", 0, 0, shoulderTilt * 0.5);
+            }
+            // デバッグ出力
+            if (Math.random() < 0.02) {
+              console.log("arm tracking:", {
+                rightShoulder: lm[RIGHT_SHOULDER],
+                rightElbow: lm[RIGHT_ELBOW]
+              });
             }
           }
           // --- 左手の指 (Left Hand) ---
