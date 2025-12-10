@@ -1,241 +1,664 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VTuber Final Manual Adjust</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VTuber Complete Edition - Full Body & Hand Tracking</title>
     <style>
-        body { margin: 0; background-color: #222; overflow: hidden; font-family: monospace; }
-        .container { position: relative; width: 100vw; height: 100vh; }
-        
-        /* カメラ映像：常に表示（アバターモードでも消さない） */
-        video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; z-index: 0; }
-        
-        canvas#skeleton-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 1; pointer-events: none; }
-        
-        /* 操作ガイド */
-        #controls {
-            position: absolute; top: 10px; right: 10px; width: 200px;
-            background: rgba(0, 0, 0, 0.6); color: #fff; padding: 10px;
-            border-radius: 8px; z-index: 1000; font-size: 12px; pointer-events: none;
-            line-height: 1.5; border: 1px solid #fff;
-        }
-        .key { display: inline-block; background: #444; padding: 2px 5px; border-radius: 3px; font-weight: bold; border: 1px solid #888; }
-
-        /* ステータス */
-        #status-panel {
-            position: absolute; top: 10px; left: 10px;
-            background: rgba(0, 0, 0, 0.6); color: #fff; padding: 5px 10px;
-            border-radius: 8px; z-index: 1000; font-size: 12px; pointer-events: none;
-        }
-        .ok { color: #00ff00; }
-
-        #toggle-btn {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            padding: 15px 40px; font-size: 1.5rem; font-weight: bold;
-            color: #888; background: #333; border: 2px solid #555; border-radius: 50px; 
-            cursor: not-allowed; z-index: 100; transition: all 0.3s;
-        }
-        #toggle-btn.ready {
-            color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff);
-            border: none; cursor: pointer; box-shadow: 0 0 20px rgba(255, 0, 204, 0.6);
-        }
+      body {
+        margin: 0;
+        background-color: #222;
+        overflow: hidden;
+        font-family: monospace;
+      }
+      .container {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+      }
+      /* カメラ映像：トグル可能 */
+      video {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        transform: scaleX(-1);
+        object-fit: cover;
+        z-index: 0;
+        transition: opacity 0.3s ease;
+      }
+      canvas#skeleton-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        transform: scaleX(-1);
+        z-index: 1;
+        pointer-events: none;
+      }
+      /* 操作ガイド */
+      #controls {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 220px;
+        background: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        padding: 12px;
+        border-radius: 10px;
+        z-index: 1000;
+        font-size: 11px;
+        pointer-events: none;
+        line-height: 1.6;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        backdrop-filter: blur(5px);
+      }
+      .key {
+        display: inline-block;
+        background: #555;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: bold;
+        border: 1px solid #888;
+        min-width: 18px;
+        text-align: center;
+      }
+      .section-title {
+        color: #00ffcc;
+        font-weight: bold;
+        margin-top: 8px;
+        margin-bottom: 4px;
+      }
+      .section-title:first-child {
+        margin-top: 0;
+      }
+      /* ステータス */
+      #status-panel {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.75);
+        color: #fff;
+        padding: 8px 12px;
+        border-radius: 10px;
+        z-index: 1000;
+        font-size: 12px;
+        pointer-events: none;
+        backdrop-filter: blur(5px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      .ok {
+        color: #00ff00;
+      }
+      .tracking {
+        color: #ffcc00;
+      }
+      /* ボタン群 */
+      .btn-container {
+        position: absolute;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 15px;
+        z-index: 100;
+      }
+      .action-btn {
+        padding: 12px 30px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: #888;
+        background: #333;
+        border: 2px solid #555;
+        border-radius: 50px;
+        cursor: not-allowed;
+        transition: all 0.3s;
+      }
+      .action-btn.ready {
+        color: #fff;
+        background: linear-gradient(45deg, #ff00cc, #3333ff);
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(255, 0, 204, 0.5);
+      }
+      .action-btn.ready:hover {
+        box-shadow: 0 0 30px rgba(255, 0, 204, 0.8);
+        transform: scale(1.05);
+      }
+      .action-btn.bg-toggle {
+        background: linear-gradient(45deg, #00ccff, #0066ff);
+        box-shadow: 0 0 20px rgba(0, 204, 255, 0.5);
+      }
+      .action-btn.bg-toggle:hover {
+        box-shadow: 0 0 30px rgba(0, 204, 255, 0.8);
+      }
+      .action-btn.bg-off {
+        background: linear-gradient(45deg, #666, #444);
+        box-shadow: 0 0 10px rgba(100, 100, 100, 0.5);
+      }
     </style>
-</head>
-<body>
-    <div id="status-panel">VRM: <span id="st-vrm" style="color:red">Loading...</span></div>
-
+  </head>
+  <body>
+    <div id="status-panel">
+      VRM: <span id="st-vrm" style="color: red">Loading...</span><br />
+      背景: <span id="st-bg" class="ok">ON</span>
+    </div>
     <!-- 操作ガイド -->
     <div id="controls">
-        <strong>調整キー (Adjust):</strong><br>
-        <span class="key">↑</span> <span class="key">↓</span> : 上下 (Up/Down)<br>
-        <span class="key">←</span> <span class="key">→</span> : 左右 (L/R)<br>
-        <span class="key">W</span> : 近づく (Zoom In)<br>
-        <span class="key">S</span> : 離れる (Zoom Out)<br>
-        <span class="key">R</span> : リセット (Reset)
+      <div class="section-title">📍 位置調整 (Position)</div>
+      <span class="key">↑</span> <span class="key">↓</span> : 上下移動<br />
+      <span class="key">←</span> <span class="key">→</span> : 左右移動<br />
+      <span class="key">W</span> : ズームイン<br />
+      <span class="key">S</span> : ズームアウト<br />
+      <span class="key">R</span> : 位置リセット<br />
+      <div class="section-title">🎬 表示切替 (Display)</div>
+      <span class="key">B</span> : 背景カメラ ON/OFF<br />
+      <div class="section-title">🦴 トラッキング対象</div>
+      顔・体・腕・足・指
     </div>
-
     <div class="container">
-        <video id="input-video" playsinline muted autoplay></video>
-        <canvas id="skeleton-canvas"></canvas>
+      <video id="input-video" playsinline muted autoplay></video>
+      <canvas id="skeleton-canvas"></canvas>
     </div>
-
-    <button id="toggle-btn" disabled>Loading Model...</button>
-
+    <div class="btn-container">
+      <button id="toggle-btn" class="action-btn" disabled>
+        Loading Model...
+      </button>
+      <button id="bg-btn" class="action-btn ready bg-toggle">背景 ON</button>
+    </div>
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
-
     <script>
-        const videoElement = document.getElementById('input-video');
-        const skeletonCanvas = document.getElementById('skeleton-canvas');
-        const skelCtx = skeletonCanvas.getContext('2d');
-        const toggleBtn = document.getElementById('toggle-btn');
-        const stVrm = document.getElementById('st-vrm');
-
-        const VRM_FILE_PATH = './avatar.vrm';
-        let currentVrm = null;
-        let isAvatarMode = false;
-
-        // --- 1. Three.js Setup ---
-        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-        renderer.domElement.id = 'avatar-canvas';
-        // 最初は非表示
-        renderer.domElement.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; display:none;";
-        document.querySelector('.container').appendChild(renderer.domElement);
-        
-        const scene = new THREE.Scene();
-        
-        // ★初期カメラ位置（少し引き気味にして見つけやすくする）
-        // x=0(正面), y=1.3(胸の高さ), z=2.0(距離)
-        const initialPos = { x: 0.0, y: 1.3, z: 2.0 };
-        const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
-        camera.position.set(initialPos.x, initialPos.y, initialPos.z);
-        
-        scene.add(new THREE.DirectionalLight(0xffffff));
-        scene.add(new THREE.AmbientLight(0x606060));
-
-        // --- キーボード操作（位置調整） ---
-        window.addEventListener('keydown', (e) => {
-            if(!isAvatarMode) return;
-            const moveStep = 0.1; // 1回押すと動く距離
-            
-            switch(e.key) {
-                case 'ArrowUp': camera.position.y += moveStep; break;
-                case 'ArrowDown': camera.position.y -= moveStep; break;
-                case 'ArrowLeft': camera.position.x -= moveStep; break;
-                case 'ArrowRight': camera.position.x += moveStep; break;
-                case 'w': case 'W': camera.position.z -= moveStep; break; // ズームイン
-                case 's': case 'S': camera.position.z += moveStep; break; // ズームアウト
-                case 'r': case 'R': camera.position.set(initialPos.x, initialPos.y, initialPos.z); break;
-            }
-        });
-
-        function resize() {
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            skeletonCanvas.width = window.innerWidth;
-            skeletonCanvas.height = window.innerHeight;
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+      // ============================================================
+      //  VTuber Complete Edition
+      //  - Face, Body, Legs, Hands (Fingers) Full Tracking
+      //  - Background Camera Toggle (B key or Button)
+      // ============================================================
+      const videoElement = document.getElementById("input-video");
+      const skeletonCanvas = document.getElementById("skeleton-canvas");
+      const skelCtx = skeletonCanvas.getContext("2d");
+      const toggleBtn = document.getElementById("toggle-btn");
+      const bgBtn = document.getElementById("bg-btn");
+      const stVrm = document.getElementById("st-vrm");
+      const stBg = document.getElementById("st-bg");
+      const VRM_FILE_PATH = "./avatar.vrm";
+      let currentVrm = null;
+      let isAvatarMode = false;
+      let isBgVisible = true; // 背景カメラ表示状態
+      // --- 1. Three.js Setup ---
+      const renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: true,
+      });
+      renderer.domElement.id = "avatar-canvas";
+      renderer.domElement.style.cssText =
+        "position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; display:none;";
+      document.querySelector(".container").appendChild(renderer.domElement);
+      const scene = new THREE.Scene();
+      // 初期カメラ位置
+      const initialPos = { x: 0.0, y: 1.3, z: 2.0 };
+      const camera = new THREE.PerspectiveCamera(
+        30.0,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        20.0
+      );
+      camera.position.set(initialPos.x, initialPos.y, initialPos.z);
+      scene.add(new THREE.DirectionalLight(0xffffff, 0.8));
+      scene.add(new THREE.AmbientLight(0x606060));
+      // --- 背景トグル関数 ---
+      function toggleBackground() {
+        isBgVisible = !isBgVisible;
+        videoElement.style.opacity = isBgVisible ? "1.0" : "0.0";
+        stBg.innerText = isBgVisible ? "ON" : "OFF";
+        stBg.className = isBgVisible ? "ok" : "tracking";
+        bgBtn.innerText = isBgVisible ? "背景 ON" : "背景 OFF";
+        bgBtn.classList.toggle("bg-off", !isBgVisible);
+        bgBtn.classList.toggle("bg-toggle", isBgVisible);
+      }
+      // --- キーボード操作 ---
+      window.addEventListener("keydown", (e) => {
+        // Bキーは常に有効（背景トグル）
+        if (e.key === "b" || e.key === "B") {
+          toggleBackground();
+          return;
         }
-        window.addEventListener('resize', resize);
-        resize();
-
-        // --- 2. VRM Load (前回成功したシンプルな読み込み) ---
-        new THREE.GLTFLoader().register(p => new THREE_VRM.VRMLoaderPlugin(p)).load(
-            VRM_FILE_PATH,
-            (gltf) => {
-                currentVrm = gltf.userData.vrm;
-                scene.add(currentVrm.scene);
-                currentVrm.scene.rotation.y = Math.PI;
-
-                // 位置は原点（0,0,0）に固定。カメラ側で合わせに行くスタイル
-                currentVrm.scene.position.set(0, 0, 0);
-
-                // Tポーズ補正
-                const h = currentVrm.humanoid;
-                if(h.getNormalizedBoneNode('leftUpperArm')) h.getNormalizedBoneNode('leftUpperArm').rotation.z = 1.2;
-                if(h.getNormalizedBoneNode('rightUpperArm')) h.getNormalizedBoneNode('rightUpperArm').rotation.z = -1.2;
-
-                stVrm.innerText = "OK (Ready)";
-                stVrm.className = "ok";
-                toggleBtn.disabled = false;
-                toggleBtn.classList.add('ready');
-                toggleBtn.innerText = "スキン装着 (Start)";
-            },
-            undefined,
-            (e) => { stVrm.innerText = "Error"; }
+        // 以下はアバターモード時のみ
+        if (!isAvatarMode) return;
+        const moveStep = 0.1;
+        switch (e.key) {
+          case "ArrowUp":
+            camera.position.y += moveStep;
+            break;
+          case "ArrowDown":
+            camera.position.y -= moveStep;
+            break;
+          case "ArrowLeft":
+            camera.position.x -= moveStep;
+            break;
+          case "ArrowRight":
+            camera.position.x += moveStep;
+            break;
+          case "w":
+          case "W":
+            camera.position.z -= moveStep;
+            break;
+          case "s":
+          case "S":
+            camera.position.z += moveStep;
+            break;
+          case "r":
+          case "R":
+            camera.position.set(initialPos.x, initialPos.y, initialPos.z);
+            break;
+        }
+      });
+      // --- 背景ボタンクリック ---
+      bgBtn.addEventListener("click", toggleBackground);
+      function resize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        skeletonCanvas.width = window.innerWidth;
+        skeletonCanvas.height = window.innerHeight;
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener("resize", resize);
+      resize();
+      // --- 2. VRM Load ---
+      new THREE.GLTFLoader()
+        .register((p) => new THREE_VRM.VRMLoaderPlugin(p))
+        .load(
+          VRM_FILE_PATH,
+          (gltf) => {
+            currentVrm = gltf.userData.vrm;
+            scene.add(currentVrm.scene);
+            currentVrm.scene.rotation.y = Math.PI;
+            currentVrm.scene.position.set(0, 0, 0);
+            // Tポーズ補正
+            const h = currentVrm.humanoid;
+            if (h.getNormalizedBoneNode("leftUpperArm"))
+              h.getNormalizedBoneNode("leftUpperArm").rotation.z = 1.2;
+            if (h.getNormalizedBoneNode("rightUpperArm"))
+              h.getNormalizedBoneNode("rightUpperArm").rotation.z = -1.2;
+            stVrm.innerText = "OK (Ready)";
+            stVrm.className = "ok";
+            toggleBtn.disabled = false;
+            toggleBtn.classList.add("ready");
+            toggleBtn.innerText = "🎭 アバター ON";
+          },
+          undefined,
+          (e) => {
+            stVrm.innerText = "Error: " + (e.message || "Load Failed");
+            console.error("VRM Load Error:", e);
+          }
         );
-
-        // --- 3. Toggle Button ---
-        toggleBtn.addEventListener('click', () => {
-            if(!currentVrm) return;
-            isAvatarMode = !isAvatarMode;
-            const avatarCanvas = document.getElementById('avatar-canvas');
-
-            if(isAvatarMode) {
-                // アバターON
-                avatarCanvas.style.display = 'block';
-                skeletonCanvas.style.display = 'none';
-                
-                // ★カメラ映像は消さない（透過度1.0のまま）
-                // 自分の姿にアバターを重ねて位置調整しやすくするため
-                videoElement.style.opacity = "1.0"; 
-
-                toggleBtn.innerText = "骨格に戻る";
+      // --- 3. Toggle Button ---
+      toggleBtn.addEventListener("click", () => {
+        if (!currentVrm) return;
+        isAvatarMode = !isAvatarMode;
+        const avatarCanvas = document.getElementById("avatar-canvas");
+        if (isAvatarMode) {
+          avatarCanvas.style.display = "block";
+          skeletonCanvas.style.display = "none";
+          toggleBtn.innerText = "🦴 骨格モード";
+        } else {
+          avatarCanvas.style.display = "none";
+          skeletonCanvas.style.display = "block";
+          toggleBtn.innerText = "🎭 アバター ON";
+        }
+      });
+      // --- 4. Holistic (MediaPipe) Setup ---
+      const holistic = new Holistic({
+        locateFile: (f) =>
+          `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`,
+      });
+      holistic.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7,
+        refineFaceLandmarks: true,
+      });
+      // --- 5. 指ボーンマッピング用ヘルパー ---
+      // VRM 1.0 の指ボーン名
+      const fingerBoneNames = {
+        left: {
+          thumb: [
+            "leftThumbMetacarpal",
+            "leftThumbProximal",
+            "leftThumbDistal",
+          ],
+          index: [
+            "leftIndexProximal",
+            "leftIndexIntermediate",
+            "leftIndexDistal",
+          ],
+          middle: [
+            "leftMiddleProximal",
+            "leftMiddleIntermediate",
+            "leftMiddleDistal",
+          ],
+          ring: ["leftRingProximal", "leftRingIntermediate", "leftRingDistal"],
+          little: [
+            "leftLittleProximal",
+            "leftLittleIntermediate",
+            "leftLittleDistal",
+          ],
+        },
+        right: {
+          thumb: [
+            "rightThumbMetacarpal",
+            "rightThumbProximal",
+            "rightThumbDistal",
+          ],
+          index: [
+            "rightIndexProximal",
+            "rightIndexIntermediate",
+            "rightIndexDistal",
+          ],
+          middle: [
+            "rightMiddleProximal",
+            "rightMiddleIntermediate",
+            "rightMiddleDistal",
+          ],
+          ring: [
+            "rightRingProximal",
+            "rightRingIntermediate",
+            "rightRingDistal",
+          ],
+          little: [
+            "rightLittleProximal",
+            "rightLittleIntermediate",
+            "rightLittleDistal",
+          ],
+        },
+      };
+      // 指の回転を適用するヘルパー関数
+      function applyFingerRig(handRig, side) {
+        if (!handRig || !currentVrm) return;
+        const bones = fingerBoneNames[side];
+        const humanoid = currentVrm.humanoid;
+        const lerpAmount = 0.3;
+        // 各指に対して処理
+        Object.keys(bones).forEach((fingerName) => {
+          const fingerData =
+            handRig[fingerName.charAt(0).toUpperCase() + fingerName.slice(1)];
+          if (!fingerData) return;
+          const boneList = bones[fingerName];
+          // 指の曲げ（curl）を各関節に適用
+          boneList.forEach((boneName, index) => {
+            const node = humanoid.getNormalizedBoneNode(boneName);
+            if (!node) return;
+            // 親指は特殊処理（横方向の動きも含む）
+            if (fingerName === "thumb") {
+              const curlValue = fingerData.curl || 0;
+              const spreadValue = fingerData.spread || 0;
+              if (index === 0) {
+                // Metacarpal: 開き具合
+                const targetRot = new THREE.Euler(
+                  0,
+                  side === "left" ? spreadValue * 0.5 : -spreadValue * 0.5,
+                  side === "left" ? curlValue * 0.3 : -curlValue * 0.3
+                );
+                node.quaternion.slerp(
+                  new THREE.Quaternion().setFromEuler(targetRot),
+                  lerpAmount
+                );
+              } else {
+                // Proximal, Distal: 曲げ
+                const targetRot = new THREE.Euler(
+                  0,
+                  0,
+                  side === "left" ? curlValue * 0.4 : -curlValue * 0.4
+                );
+                node.quaternion.slerp(
+                  new THREE.Quaternion().setFromEuler(targetRot),
+                  lerpAmount
+                );
+              }
             } else {
-                // アバターOFF
-                avatarCanvas.style.display = 'none';
-                skeletonCanvas.style.display = 'block';
-                toggleBtn.innerText = "スキン装着 (Start)";
+              // 他の4本指: X軸回転で曲げる
+              const curlValue = fingerData.curl || 0;
+              const targetRot = new THREE.Euler(curlValue * 0.9, 0, 0);
+              node.quaternion.slerp(
+                new THREE.Quaternion().setFromEuler(targetRot),
+                lerpAmount
+              );
             }
+          });
         });
-
-        // --- 4. AI Loop (全身対応版) ---
-        const holistic = new Holistic({locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`});
-        holistic.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7, refineFaceLandmarks: true });
-
-        holistic.onResults((results) => {
-            if(!isAvatarMode) {
-                // 骨格表示
-                skelCtx.save();
-                skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
-                drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {color: '#00FF00', lineWidth: 4});
-                drawLandmarks(skelCtx, results.poseLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
-                skelCtx.restore();
-            } else if(currentVrm) {
-                // アバター操作
-                
-                // 顔 (Face)
-                if (results.faceLandmarks) {
-                    const faceRig = Kalidokit.Face.solve(results.faceLandmarks, {runtime: 'mediapipe', video: videoElement});
-                    if (faceRig) {
-                        const neck = currentVrm.humanoid.getNormalizedBoneNode("neck");
-                        if (neck) neck.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(faceRig.head.x, faceRig.head.y, faceRig.head.z)), 0.5);
-                        if(currentVrm.expressionManager){
-                            currentVrm.expressionManager.setValue('aa', faceRig.mouth.shape.A);
-                            currentVrm.expressionManager.setValue('blinkLeft', 1 - faceRig.eye.l);
-                            currentVrm.expressionManager.setValue('blinkRight', 1 - faceRig.eye.r);
-                        }
-                    }
+      }
+      // --- 6. MediaPipe Results Handler ---
+      holistic.onResults((results) => {
+        if (!isAvatarMode) {
+          // 骨格表示モード
+          skelCtx.save();
+          skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
+          // ポーズ（体）
+          drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {
+            color: "#00FF00",
+            lineWidth: 3,
+          });
+          drawLandmarks(skelCtx, results.poseLandmarks, {
+            color: "#FF0000",
+            lineWidth: 2,
+            radius: 4,
+          });
+          // 左手
+          drawConnectors(skelCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {
+            color: "#00CCFF",
+            lineWidth: 3,
+          });
+          drawLandmarks(skelCtx, results.leftHandLandmarks, {
+            color: "#0088FF",
+            lineWidth: 1,
+            radius: 3,
+          });
+          // 右手
+          drawConnectors(
+            skelCtx,
+            results.rightHandLandmarks,
+            HAND_CONNECTIONS,
+            { color: "#FFCC00", lineWidth: 3 }
+          );
+          drawLandmarks(skelCtx, results.rightHandLandmarks, {
+            color: "#FF8800",
+            lineWidth: 1,
+            radius: 3,
+          });
+          // 顔
+          drawConnectors(skelCtx, results.faceLandmarks, FACEMESH_TESSELATION, {
+            color: "#C0C0C070",
+            lineWidth: 1,
+          });
+          skelCtx.restore();
+        } else if (currentVrm) {
+          // ========================================
+          //  アバターモード - 全身トラッキング
+          // ========================================
+          // --- 顔 (Face) ---
+          if (results.faceLandmarks) {
+            const faceRig = Kalidokit.Face.solve(results.faceLandmarks, {
+              runtime: "mediapipe",
+              video: videoElement,
+            });
+            if (faceRig) {
+              // 頭の回転
+              const head = currentVrm.humanoid.getNormalizedBoneNode("head");
+              const neck = currentVrm.humanoid.getNormalizedBoneNode("neck");
+              if (head) {
+                head.quaternion.slerp(
+                  new THREE.Quaternion().setFromEuler(
+                    new THREE.Euler(
+                      faceRig.head.x * 0.6,
+                      faceRig.head.y * 0.6,
+                      faceRig.head.z * 0.6
+                    )
+                  ),
+                  0.4
+                );
+              }
+              if (neck) {
+                neck.quaternion.slerp(
+                  new THREE.Quaternion().setFromEuler(
+                    new THREE.Euler(
+                      faceRig.head.x * 0.4,
+                      faceRig.head.y * 0.4,
+                      faceRig.head.z * 0.4
+                    )
+                  ),
+                  0.4
+                );
+              }
+              // 表情
+              if (currentVrm.expressionManager) {
+                // 口
+                currentVrm.expressionManager.setValue(
+                  "aa",
+                  faceRig.mouth.shape.A
+                );
+                currentVrm.expressionManager.setValue(
+                  "ih",
+                  faceRig.mouth.shape.I
+                );
+                currentVrm.expressionManager.setValue(
+                  "ou",
+                  faceRig.mouth.shape.U
+                );
+                currentVrm.expressionManager.setValue(
+                  "ee",
+                  faceRig.mouth.shape.E
+                );
+                currentVrm.expressionManager.setValue(
+                  "oh",
+                  faceRig.mouth.shape.O
+                );
+                // 目
+                currentVrm.expressionManager.setValue(
+                  "blinkLeft",
+                  1 - faceRig.eye.l
+                );
+                currentVrm.expressionManager.setValue(
+                  "blinkRight",
+                  1 - faceRig.eye.r
+                );
+                // 瞳の向き（対応モデルのみ）
+                if (faceRig.pupil) {
+                  currentVrm.expressionManager.setValue(
+                    "lookLeft",
+                    faceRig.pupil.x < 0 ? -faceRig.pupil.x : 0
+                  );
+                  currentVrm.expressionManager.setValue(
+                    "lookRight",
+                    faceRig.pupil.x > 0 ? faceRig.pupil.x : 0
+                  );
+                  currentVrm.expressionManager.setValue(
+                    "lookUp",
+                    faceRig.pupil.y > 0 ? faceRig.pupil.y : 0
+                  );
+                  currentVrm.expressionManager.setValue(
+                    "lookDown",
+                    faceRig.pupil.y < 0 ? -faceRig.pupil.y : 0
+                  );
                 }
-
-                // 体 (Body - 全身対応)
-                if (results.poseLandmarks && results.poseWorldLandmarks) {
-                    const poseRig = Kalidokit.Pose.solve(results.poseLandmarks, results.poseWorldLandmarks, {runtime: 'mediapipe', video: videoElement});
-                    if (poseRig) {
-                        const rig = (name, rot) => {
-                            const node = currentVrm.humanoid.getNormalizedBoneNode(name);
-                            if(node && rot) node.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z)), 0.3);
-                        };
-                        rig("hips", poseRig.Hips.rotation);
-                        rig("spine", poseRig.Spine);
-                        rig("rightUpperArm", poseRig.RightUpperArm);
-                        rig("leftUpperArm", poseRig.LeftUpperArm);
-                        rig("rightLowerArm", poseRig.RightLowerArm);
-                        rig("leftLowerArm", poseRig.LeftLowerArm);
-                        // 足
-                        rig("rightUpperLeg", poseRig.RightUpperLeg);
-                        rig("leftUpperLeg", poseRig.LeftUpperLeg);
-                        rig("rightLowerLeg", poseRig.RightLowerLeg);
-                        rig("leftLowerLeg", poseRig.LeftLowerLeg);
-                    }
-                }
-                currentVrm.update(1.0/30.0);
-                renderer.render(scene, camera);
+              }
             }
-        });
-
-        window.onload = () => {
-            new Camera(videoElement, {
-                onFrame: async () => await holistic.send({image: videoElement}),
-                width: 640, height: 480
-            }).start();
-        };
+          }
+          // --- 体 (Body) ---
+          if (results.poseLandmarks && results.poseWorldLandmarks) {
+            const poseRig = Kalidokit.Pose.solve(
+              results.poseWorldLandmarks,
+              results.poseLandmarks,
+              {
+                runtime: "mediapipe",
+                video: videoElement,
+              }
+            );
+            if (poseRig) {
+              const rigRotation = (name, rot, lerpAmount = 0.3) => {
+                const node = currentVrm.humanoid.getNormalizedBoneNode(name);
+                if (node && rot) {
+                  node.quaternion.slerp(
+                    new THREE.Quaternion().setFromEuler(
+                      new THREE.Euler(rot.x, rot.y, rot.z)
+                    ),
+                    lerpAmount
+                  );
+                }
+              };
+              // 体幹
+              rigRotation("hips", poseRig.Hips?.rotation);
+              rigRotation("spine", poseRig.Spine);
+              rigRotation("chest", poseRig.Chest);
+              // 腕
+              rigRotation("rightUpperArm", poseRig.RightUpperArm);
+              rigRotation("leftUpperArm", poseRig.LeftUpperArm);
+              rigRotation("rightLowerArm", poseRig.RightLowerArm);
+              rigRotation("leftLowerArm", poseRig.LeftLowerArm);
+              // 手首
+              rigRotation("rightHand", poseRig.RightHand);
+              rigRotation("leftHand", poseRig.LeftHand);
+              // 足
+              rigRotation("rightUpperLeg", poseRig.RightUpperLeg);
+              rigRotation("leftUpperLeg", poseRig.LeftUpperLeg);
+              rigRotation("rightLowerLeg", poseRig.RightLowerLeg);
+              rigRotation("leftLowerLeg", poseRig.LeftLowerLeg);
+            }
+          }
+          // --- 左手の指 (Left Hand) ---
+          if (results.leftHandLandmarks) {
+            const leftHandRig = Kalidokit.Hand.solve(
+              results.leftHandLandmarks,
+              "Left"
+            );
+            applyFingerRig(leftHandRig, "left");
+          }
+          // --- 右手の指 (Right Hand) ---
+          if (results.rightHandLandmarks) {
+            const rightHandRig = Kalidokit.Hand.solve(
+              results.rightHandLandmarks,
+              "Right"
+            );
+            applyFingerRig(rightHandRig, "right");
+          }
+          // VRM更新とレンダリング
+          currentVrm.update(1.0 / 30.0);
+          renderer.render(scene, camera);
+        }
+      });
+      // --- 7. Camera Start ---
+      window.onload = () => {
+        new Camera(videoElement, {
+          onFrame: async () => await holistic.send({ image: videoElement }),
+          width: 640,
+          height: 480,
+        })
+          .start()
+          .then(() => {
+            console.log("Camera started successfully");
+          })
+          .catch((err) => {
+            console.error("Camera start error:", err);
+            stVrm.innerText = "Camera Error";
+            stVrm.style.color = "red";
+          });
+      };
     </script>
-</body>
+  </body>
 </html>
