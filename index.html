@@ -16,7 +16,6 @@
         width: 100vw;
         height: 100vh;
       }
-
       /* カメラ映像：トグル可能 */
       video {
         position: absolute;
@@ -29,7 +28,6 @@
         z-index: 0;
         transition: opacity 0.3s ease;
       }
-
       canvas#skeleton-canvas {
         position: absolute;
         top: 0;
@@ -40,7 +38,6 @@
         z-index: 1;
         pointer-events: none;
       }
-
       /* 操作ガイド */
       #controls {
         position: absolute;
@@ -77,7 +74,6 @@
       .section-title:first-child {
         margin-top: 0;
       }
-
       /* ステータス */
       #status-panel {
         position: absolute;
@@ -99,7 +95,6 @@
       .tracking {
         color: #ffcc00;
       }
-
       /* ボタン群 */
       .btn-container {
         position: absolute;
@@ -110,7 +105,6 @@
         gap: 15px;
         z-index: 100;
       }
-
       .action-btn {
         padding: 12px 30px;
         font-size: 1.1rem;
@@ -151,7 +145,6 @@
       VRM: <span id="st-vrm" style="color: red">Loading...</span><br />
       背景: <span id="st-bg" class="ok">ON</span>
     </div>
-
     <!-- 操作ガイド -->
     <div id="controls">
       <div class="section-title">📍 位置調整 (Position)</div>
@@ -160,26 +153,21 @@
       <span class="key">W</span> : ズームイン<br />
       <span class="key">S</span> : ズームアウト<br />
       <span class="key">R</span> : 位置リセット<br />
-
       <div class="section-title">🎬 表示切替 (Display)</div>
       <span class="key">B</span> : 背景カメラ ON/OFF<br />
-
       <div class="section-title">🦴 トラッキング対象</div>
       顔・体・腕・足・指
     </div>
-
     <div class="container">
       <video id="input-video" playsinline muted autoplay></video>
       <canvas id="skeleton-canvas"></canvas>
     </div>
-
     <div class="btn-container">
       <button id="toggle-btn" class="action-btn" disabled>
         Loading Model...
       </button>
       <button id="bg-btn" class="action-btn ready bg-toggle">背景 ON</button>
     </div>
-
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
@@ -196,14 +184,12 @@
       crossorigin="anonymous"
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/kalidokit@1.1.5/dist/kalidokit.umd.js"></script>
-
     <script>
       // ============================================================
       //  VTuber Complete Edition
       //  - Face, Body, Legs, Hands (Fingers) Full Tracking
       //  - Background Camera Toggle (B key or Button)
       // ============================================================
-
       const videoElement = document.getElementById("input-video");
       const skeletonCanvas = document.getElementById("skeleton-canvas");
       const skelCtx = skeletonCanvas.getContext("2d");
@@ -211,12 +197,10 @@
       const bgBtn = document.getElementById("bg-btn");
       const stVrm = document.getElementById("st-vrm");
       const stBg = document.getElementById("st-bg");
-
       const VRM_FILE_PATH = "./avatar.vrm";
       let currentVrm = null;
       let isAvatarMode = false;
       let isBgVisible = true; // 背景カメラ表示状態
-
       // --- 1. Three.js Setup ---
       const renderer = new THREE.WebGLRenderer({
         alpha: true,
@@ -226,9 +210,7 @@
       renderer.domElement.style.cssText =
         "position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; display:none;";
       document.querySelector(".container").appendChild(renderer.domElement);
-
       const scene = new THREE.Scene();
-
       // 初期カメラ位置
       const initialPos = { x: 0.0, y: 1.3, z: 2.0 };
       const camera = new THREE.PerspectiveCamera(
@@ -238,10 +220,8 @@
         20.0
       );
       camera.position.set(initialPos.x, initialPos.y, initialPos.z);
-
       scene.add(new THREE.DirectionalLight(0xffffff, 0.8));
       scene.add(new THREE.AmbientLight(0x606060));
-
       // --- 背景トグル関数 ---
       function toggleBackground() {
         isBgVisible = !isBgVisible;
@@ -252,7 +232,6 @@
         bgBtn.classList.toggle("bg-off", !isBgVisible);
         bgBtn.classList.toggle("bg-toggle", isBgVisible);
       }
-
       // --- キーボード操作 ---
       window.addEventListener("keydown", (e) => {
         // Bキーは常に有効（背景トグル）
@@ -260,11 +239,9 @@
           toggleBackground();
           return;
         }
-
         // 以下はアバターモード時のみ
         if (!isAvatarMode) return;
         const moveStep = 0.1;
-
         switch (e.key) {
           case "ArrowUp":
             camera.position.y += moveStep;
@@ -292,10 +269,8 @@
             break;
         }
       });
-
       // --- 背景ボタンクリック ---
       bgBtn.addEventListener("click", toggleBackground);
-
       function resize() {
         renderer.setSize(window.innerWidth, window.innerHeight);
         skeletonCanvas.width = window.innerWidth;
@@ -305,7 +280,6 @@
       }
       window.addEventListener("resize", resize);
       resize();
-
       // --- 2. VRM Load ---
       new THREE.GLTFLoader()
         .register((p) => new THREE_VRM.VRMLoaderPlugin(p))
@@ -316,14 +290,12 @@
             scene.add(currentVrm.scene);
             currentVrm.scene.rotation.y = Math.PI;
             currentVrm.scene.position.set(0, 0, 0);
-
             // Tポーズ補正
             const h = currentVrm.humanoid;
             if (h.getNormalizedBoneNode("leftUpperArm"))
               h.getNormalizedBoneNode("leftUpperArm").rotation.z = 1.2;
             if (h.getNormalizedBoneNode("rightUpperArm"))
               h.getNormalizedBoneNode("rightUpperArm").rotation.z = -1.2;
-
             stVrm.innerText = "OK (Ready)";
             stVrm.className = "ok";
             toggleBtn.disabled = false;
@@ -336,13 +308,11 @@
             console.error("VRM Load Error:", e);
           }
         );
-
       // --- 3. Toggle Button ---
       toggleBtn.addEventListener("click", () => {
         if (!currentVrm) return;
         isAvatarMode = !isAvatarMode;
         const avatarCanvas = document.getElementById("avatar-canvas");
-
         if (isAvatarMode) {
           avatarCanvas.style.display = "block";
           skeletonCanvas.style.display = "none";
@@ -353,7 +323,6 @@
           toggleBtn.innerText = "🎭 アバター ON";
         }
       });
-
       // --- 4. Holistic (MediaPipe) Setup ---
       const holistic = new Holistic({
         locateFile: (f) =>
@@ -366,7 +335,6 @@
         minTrackingConfidence: 0.7,
         refineFaceLandmarks: true,
       });
-
       // --- 5. 指ボーンマッピング用ヘルパー ---
       // VRM 1.0 の指ボーン名
       const fingerBoneNames = {
@@ -421,33 +389,26 @@
           ],
         },
       };
-
       // 指の回転を適用するヘルパー関数
       function applyFingerRig(handRig, side) {
         if (!handRig || !currentVrm) return;
-
         const bones = fingerBoneNames[side];
         const humanoid = currentVrm.humanoid;
         const lerpAmount = 0.3;
-
         // 各指に対して処理
         Object.keys(bones).forEach((fingerName) => {
           const fingerData =
             handRig[fingerName.charAt(0).toUpperCase() + fingerName.slice(1)];
           if (!fingerData) return;
-
           const boneList = bones[fingerName];
-
           // 指の曲げ（curl）を各関節に適用
           boneList.forEach((boneName, index) => {
             const node = humanoid.getNormalizedBoneNode(boneName);
             if (!node) return;
-
             // 親指は特殊処理（横方向の動きも含む）
             if (fingerName === "thumb") {
               const curlValue = fingerData.curl || 0;
               const spreadValue = fingerData.spread || 0;
-
               if (index === 0) {
                 // Metacarpal: 開き具合
                 const targetRot = new THREE.Euler(
@@ -483,14 +444,12 @@
           });
         });
       }
-
       // --- 6. MediaPipe Results Handler ---
       holistic.onResults((results) => {
         if (!isAvatarMode) {
           // 骨格表示モード
           skelCtx.save();
           skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
-
           // ポーズ（体）
           drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, {
             color: "#00FF00",
@@ -501,7 +460,6 @@
             lineWidth: 2,
             radius: 4,
           });
-
           // 左手
           drawConnectors(skelCtx, results.leftHandLandmarks, HAND_CONNECTIONS, {
             color: "#00CCFF",
@@ -512,7 +470,6 @@
             lineWidth: 1,
             radius: 3,
           });
-
           // 右手
           drawConnectors(
             skelCtx,
@@ -525,31 +482,26 @@
             lineWidth: 1,
             radius: 3,
           });
-
           // 顔
           drawConnectors(skelCtx, results.faceLandmarks, FACEMESH_TESSELATION, {
             color: "#C0C0C070",
             lineWidth: 1,
           });
-
           skelCtx.restore();
         } else if (currentVrm) {
           // ========================================
           //  アバターモード - 全身トラッキング
           // ========================================
-
           // --- 顔 (Face) ---
           if (results.faceLandmarks) {
             const faceRig = Kalidokit.Face.solve(results.faceLandmarks, {
               runtime: "mediapipe",
               video: videoElement,
             });
-
             if (faceRig) {
               // 頭の回転
               const head = currentVrm.humanoid.getNormalizedBoneNode("head");
               const neck = currentVrm.humanoid.getNormalizedBoneNode("neck");
-
               if (head) {
                 head.quaternion.slerp(
                   new THREE.Quaternion().setFromEuler(
@@ -574,7 +526,6 @@
                   0.4
                 );
               }
-
               // 表情
               if (currentVrm.expressionManager) {
                 // 口
@@ -598,7 +549,6 @@
                   "oh",
                   faceRig.mouth.shape.O
                 );
-
                 // 目
                 currentVrm.expressionManager.setValue(
                   "blinkLeft",
@@ -608,7 +558,6 @@
                   "blinkRight",
                   1 - faceRig.eye.r
                 );
-
                 // 瞳の向き（対応モデルのみ）
                 if (faceRig.pupil) {
                   currentVrm.expressionManager.setValue(
@@ -631,31 +580,23 @@
               }
             }
           }
-
           // --- 体 (Body) ---
-          // デバッグ: ポーズデータの有無を確認
-          if (Math.random() < 0.02) {
-            console.log("pose check:", {
-              hasLandmarks: !!results.poseLandmarks,
-              hasWorldLandmarks: !!results.poseWorldLandmarks,
-              landmarksCount: results.poseLandmarks?.length || 0
-            });
-          }
-          if (results.poseLandmarks && results.poseWorldLandmarks) {
+          if (results.poseLandmarks) {
+            // poseWorldLandmarksがない場合はposeLandmarksを両方に使用
+            const worldLandmarks = results.poseWorldLandmarks || results.poseLandmarks;
+            
             const poseRig = Kalidokit.Pose.solve(
               results.poseLandmarks,
-              results.poseWorldLandmarks,
+              worldLandmarks,
               {
                 runtime: "mediapipe",
                 video: videoElement,
               }
             );
-
-            // デバッグ: poseRigの内容を確認（1秒に1回だけ出力）
-            if (poseRig && Math.random() < 0.03) {
+            // デバッグ: poseRigの内容を確認
+            if (poseRig && Math.random() < 0.02) {
               console.log("poseRig:", poseRig);
             }
-
             if (poseRig) {
               const rigRotation = (name, rot, lerpAmount = 0.5) => {
                 const node = currentVrm.humanoid.getNormalizedBoneNode(name);
@@ -666,22 +607,18 @@
                   node.quaternion.slerp(targetQuat, lerpAmount);
                 }
               };
-
               // 体幹
               if (poseRig.Hips?.rotation) rigRotation("hips", poseRig.Hips.rotation);
               if (poseRig.Spine) rigRotation("spine", poseRig.Spine);
               if (poseRig.Chest) rigRotation("chest", poseRig.Chest);
-
               // 腕（より大きな補間係数で反応を速く）
               rigRotation("rightUpperArm", poseRig.RightUpperArm, 0.6);
               rigRotation("leftUpperArm", poseRig.LeftUpperArm, 0.6);
               rigRotation("rightLowerArm", poseRig.RightLowerArm, 0.6);
               rigRotation("leftLowerArm", poseRig.LeftLowerArm, 0.6);
-
               // 手首
               rigRotation("rightHand", poseRig.RightHand);
               rigRotation("leftHand", poseRig.LeftHand);
-
               // 足
               rigRotation("rightUpperLeg", poseRig.RightUpperLeg);
               rigRotation("leftUpperLeg", poseRig.LeftUpperLeg);
@@ -689,7 +626,6 @@
               rigRotation("leftLowerLeg", poseRig.LeftLowerLeg);
             }
           }
-
           // --- 左手の指 (Left Hand) ---
           if (results.leftHandLandmarks) {
             const leftHandRig = Kalidokit.Hand.solve(
@@ -698,7 +634,6 @@
             );
             applyFingerRig(leftHandRig, "left");
           }
-
           // --- 右手の指 (Right Hand) ---
           if (results.rightHandLandmarks) {
             const rightHandRig = Kalidokit.Hand.solve(
@@ -707,13 +642,11 @@
             );
             applyFingerRig(rightHandRig, "right");
           }
-
           // VRM更新とレンダリング
           currentVrm.update(1.0 / 30.0);
           renderer.render(scene, camera);
         }
       });
-
       // --- 7. Camera Start ---
       window.onload = () => {
         new Camera(videoElement, {
