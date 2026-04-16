@@ -382,10 +382,11 @@
             }
           }
 
-          // --- 体・腕・足 (Pose) ---
-          // ※2Dランドマーク(poseLandmarks)と3D(poseWorldLandmarks)の両方を使って正確な関節角度を計算します
-          if (results.poseLandmarks && results.poseWorldLandmarks) {
-            const poseRig = Kalidokit.Pose.solve(results.poseWorldLandmarks, results.poseLandmarks, {
+         // --- 体・腕・足 (Pose) ---
+          // 3Dランドマークがない場合は2Dランドマークで代用して強制実行する対策を追加
+          if (results.poseLandmarks) {
+            const pose3D = results.poseWorldLandmarks || results.poseLandmarks;
+            const poseRig = Kalidokit.Pose.solve(pose3D, results.poseLandmarks, {
               runtime: "mediapipe",
               video: videoElement,
             });
@@ -403,7 +404,7 @@
               rigRotation("Chest", poseRig.Spine, 0.25, 0.3);
               rigRotation("Spine", poseRig.Spine, 0.25, 0.3);
 
-              // 両腕（前回のコードにあった自己流計算を削除し、一発適用！）
+              // 両腕
               rigRotation("RightUpperArm", poseRig.RightUpperArm, 1, 0.3);
               rigRotation("RightLowerArm", poseRig.RightLowerArm, 1, 0.3);
               rigRotation("LeftUpperArm", poseRig.LeftUpperArm, 1, 0.3);
@@ -416,7 +417,6 @@
               rigRotation("RightLowerLeg", poseRig.RightLowerLeg, 1, 0.3);
             }
           }
-
           // --- 左手と指 (Left Hand) ---
           if (results.leftHandLandmarks) {
             const leftHandRig = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
