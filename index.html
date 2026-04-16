@@ -383,16 +383,28 @@
           }
 
          // --- 体・腕・足 (Pose) ---
-          // 3Dランドマークがない場合は2Dランドマークで代用して強制実行する対策を追加
           if (results.poseLandmarks) {
-            const pose3D = results.poseWorldLandmarks || results.poseLandmarks;
-            const poseRig = Kalidokit.Pose.solve(pose3D, results.poseLandmarks, {
+            // 💡追加：Kalidokitの安全装置を突破するため、信頼度(visibility)を強制的にMAX(1.0)にするハック
+            const forceVisibility = (landmarks) => {
+              if (!landmarks) return landmarks;
+              return landmarks.map(lm => ({ ...lm, visibility: 1.0 }));
+            };
+
+            const p3D = forceVisibility(results.poseWorldLandmarks || results.poseLandmarks);
+            const p2D = forceVisibility(results.poseLandmarks);
+
+            const poseRig = Kalidokit.Pose.solve(p3D, p2D, {
               runtime: "mediapipe",
               video: videoElement,
             });
 
+            // 💡デバッグ用：本当に計算されているかコンソールに出力（1秒に約1回表示）
+            if (Math.random() < 0.05) {
+                console.log("右腕の計算データ:", poseRig.RightUpperArm);
+            }
+
             if (poseRig) {
-              // 腰の回転と位置（Y軸に+1.0を足して地面に埋まらないように調整）
+              // 腰の回転と位置
               rigRotation("Hips", poseRig.Hips.rotation, 0.7, 0.3);
               rigPosition("Hips", {
                 x: -poseRig.Hips.position.x, 
@@ -415,16 +427,6 @@
               rigRotation("LeftLowerLeg", poseRig.LeftLowerLeg, 1, 0.3);
               rigRotation("RightUpperLeg", poseRig.RightUpperLeg, 1, 0.3);
               rigRotation("RightLowerLeg", poseRig.RightLowerLeg, 1, 0.3);
-            }
-          }
-          // --- 左手と指 (Left Hand) ---
-          if (results.leftHandLandmarks) {
-            const leftHandRig = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
-            if (leftHandRig) {
-              // 全ての指関節をループで自動適用
-              for (const[boneName, rotation] of Object.entries(leftHandRig)) {
-                rigRotation(boneName, rotation, 1, 0.3);
-              }
             }
           }
 
