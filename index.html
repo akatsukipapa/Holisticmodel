@@ -1,36 +1,51 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <!-- headタグやCSSは同じなので省略せずに記載 -->
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VTuber - Version 1 (2D Simulated)</title>
+    <title>VTuber - 2D Simulated Edition (Safe Version)</title>
     <style>
       body { margin: 0; background-color: #222; overflow: hidden; font-family: monospace; }
       .container { position: relative; width: 100vw; height: 100vh; }
       video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; z-index: 0; transition: opacity 0.3s ease; }
       canvas#skeleton-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 1; pointer-events: none; }
-      #controls { position: absolute; top: 10px; right: 10px; width: 220px; background: rgba(0, 0, 0, 0.75); color: #fff; padding: 12px; border-radius: 10px; z-index: 1000; font-size: 11px; }
-      .key { display: inline-block; background: #555; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1px solid #888; }
+      #controls { position: absolute; top: 10px; right: 10px; width: 220px; background: rgba(0, 0, 0, 0.75); color: #fff; padding: 12px; border-radius: 10px; z-index: 1000; font-size: 11px; pointer-events: none; border: 1px solid rgba(255, 255, 255, 0.3); backdrop-filter: blur(5px); }
+      .key { display: inline-block; background: #555; padding: 2px 6px; border-radius: 4px; font-weight: bold; border: 1px solid #888; min-width: 18px; text-align: center; }
       .section-title { color: #00ffcc; font-weight: bold; margin-top: 8px; margin-bottom: 4px; }
       #status-panel { position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.75); color: #fff; padding: 8px 12px; border-radius: 10px; z-index: 1000; font-size: 12px; }
       .ok { color: #00ff00; } .tracking { color: #ffcc00; }
       .btn-container { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; z-index: 100; }
       .action-btn { padding: 12px 30px; font-size: 1.1rem; font-weight: bold; color: #888; background: #333; border: 2px solid #555; border-radius: 50px; cursor: not-allowed; transition: all 0.3s; }
-      .action-btn.ready { color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff); border: none; cursor: pointer; }
+      .action-btn.ready { color: #fff; background: linear-gradient(45deg, #ff00cc, #3333ff); border: none; cursor: pointer; box-shadow: 0 0 20px rgba(255, 0, 204, 0.5); }
       .action-btn.bg-toggle { background: linear-gradient(45deg, #00ccff, #0066ff); }
       .action-btn.bg-off { background: linear-gradient(45deg, #666, #444); }
     </style>
   </head>
   <body>
-    <div id="status-panel">VRM: <span id="st-vrm" style="color: red">Loading...</span><br />背景: <span id="st-bg" class="ok">ON</span></div>
-    <div id="controls"><div class="section-title">📍 位置調整</div><span class="key">↑</span><span class="key">↓</span><span class="key">←</span><span class="key">→</span> 移動<br><span class="key">W</span><span class="key">S</span> ズーム<br><span class="key">R</span> リセット<br><div class="section-title">🎬 背景切替</div><span class="key">B</span> 背景 ON/OFF</div>
-    <div class="container"><video id="input-video" playsinline muted autoplay></video><canvas id="skeleton-canvas"></canvas></div>
+    <div id="status-panel">
+      VRM: <span id="st-vrm" style="color: red">Loading...</span><br />
+      背景: <span id="st-bg" class="ok">ON</span>
+    </div>
+    <div id="controls">
+      <div class="section-title">📍 位置調整 (Position)</div>
+      <span class="key">↑</span> <span class="key">↓</span> : 上下移動<br />
+      <span class="key">←</span> <span class="key">→</span> : 左右移動<br />
+      <span class="key">W</span> : ズームイン<br />
+      <span class="key">S</span> : ズームアウト<br />
+      <span class="key">R</span> : 位置リセット<br />
+      <div class="section-title">🎬 表示切替 (Display)</div>
+      <span class="key">B</span> : 背景カメラ ON/OFF
+    </div>
+    <div class="container">
+      <video id="input-video" playsinline muted autoplay></video>
+      <canvas id="skeleton-canvas"></canvas>
+    </div>
     <div class="btn-container">
       <button id="toggle-btn" class="action-btn" disabled>Loading Model...</button>
       <button id="bg-btn" class="action-btn ready bg-toggle">背景 ON</button>
     </div>
 
+    <!-- ライブラリ群 -->
     <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.146.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://unpkg.com/@pixiv/three-vrm@1.0.0/lib/three-vrm.min.js"></script>
@@ -47,9 +62,13 @@
       const bgBtn = document.getElementById("bg-btn");
       const stVrm = document.getElementById("st-vrm");
       const stBg = document.getElementById("st-bg");
-      let currentVrm = null; let isAvatarMode = false; let isBgVisible = true;
+      
+      const VRM_FILE_PATH = "./avatar.vrm";
+      let currentVrm = null;
+      let isAvatarMode = false;
+      let isBgVisible = true;
 
-      // Three.js Setup
+      // --- Three.js Setup ---
       const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
       renderer.domElement.id = "avatar-canvas";
       renderer.domElement.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; display:none;";
@@ -58,7 +77,8 @@
       const initialPos = { x: 0.0, y: 1.3, z: 2.0 };
       const camera = new THREE.PerspectiveCamera(30.0, window.innerWidth / window.innerHeight, 0.1, 20.0);
       camera.position.set(initialPos.x, initialPos.y, initialPos.z);
-      scene.add(new THREE.DirectionalLight(0xffffff, 0.8)); scene.add(new THREE.AmbientLight(0x606060));
+      scene.add(new THREE.DirectionalLight(0xffffff, 0.8));
+      scene.add(new THREE.AmbientLight(0x606060));
 
       function toggleBackground() {
         isBgVisible = !isBgVisible;
@@ -66,20 +86,25 @@
         stBg.innerText = isBgVisible ? "ON" : "OFF";
         stBg.className = isBgVisible ? "ok" : "tracking";
         bgBtn.innerText = isBgVisible ? "背景 ON" : "背景 OFF";
-        bgBtn.classList.toggle("bg-off", !isBgVisible); bgBtn.classList.toggle("bg-toggle", isBgVisible);
+        bgBtn.classList.toggle("bg-off", !isBgVisible);
+        bgBtn.classList.toggle("bg-toggle", isBgVisible);
       }
       window.addEventListener("keydown", (e) => {
         if (e.key === "b" || e.key === "B") { toggleBackground(); return; }
         if (!isAvatarMode) return;
         const s = 0.1;
         switch (e.key) {
-          case "ArrowUp": camera.position.y += s; break; case "ArrowDown": camera.position.y -= s; break;
-          case "ArrowLeft": camera.position.x -= s; break; case "ArrowRight": camera.position.x += s; break;
-          case "w": case "W": camera.position.z -= s; break; case "s": case "S": camera.position.z += s; break;
+          case "ArrowUp": camera.position.y += s; break;
+          case "ArrowDown": camera.position.y -= s; break;
+          case "ArrowLeft": camera.position.x -= s; break;
+          case "ArrowRight": camera.position.x += s; break;
+          case "w": case "W": camera.position.z -= s; break;
+          case "s": case "S": camera.position.z += s; break;
           case "r": case "R": camera.position.set(initialPos.x, initialPos.y, initialPos.z); break;
         }
       });
       bgBtn.addEventListener("click", toggleBackground);
+
       function resize() {
         renderer.setSize(window.innerWidth, window.innerHeight);
         skeletonCanvas.width = window.innerWidth; skeletonCanvas.height = window.innerHeight;
@@ -87,12 +112,14 @@
       }
       window.addEventListener("resize", resize); resize();
 
-      // VRM Load
-      new THREE.GLTFLoader().register((p) => new THREE_VRM.VRMLoaderPlugin(p)).load("./avatar.vrm", (gltf) => {
+      // --- VRM Load ---
+      new THREE.GLTFLoader().register((p) => new THREE_VRM.VRMLoaderPlugin(p)).load(VRM_FILE_PATH, (gltf) => {
         currentVrm = gltf.userData.vrm; scene.add(currentVrm.scene);
         currentVrm.scene.rotation.y = Math.PI;
         stVrm.innerText = "OK (Ready)"; stVrm.className = "ok";
         toggleBtn.disabled = false; toggleBtn.classList.add("ready"); toggleBtn.innerText = "🎭 アバター ON";
+      }, undefined, (e) => {
+        stVrm.innerText = "VRM Error"; console.error(e);
       });
 
       toggleBtn.addEventListener("click", () => {
@@ -106,91 +133,102 @@
       const holistic = new Holistic({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}` });
       holistic.setOptions({ modelComplexity: 1, smoothLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7, refineFaceLandmarks: true });
 
+      // 💡安全なボーン適用ヘルパー（NaNエラーでフリーズするのを防ぐ）
       const rigRotation = (boneName, rotation = { x: 0, y: 0, z: 0 }, dampener = 1, lerpAmount = 0.3) => {
         if (!currentVrm) return;
-        const vrmBoneName = boneName.charAt(0).toLowerCase() + boneName.slice(1);
-        const node = currentVrm.humanoid.getNormalizedBoneNode(vrmBoneName);
+        const node = currentVrm.humanoid.getNormalizedBoneNode(boneName.charAt(0).toLowerCase() + boneName.slice(1));
         if (!node) return;
-        const euler = new THREE.Euler(rotation.x * dampener, rotation.y * dampener, rotation.z * dampener, "XYZ");
-        node.quaternion.slerp(new THREE.Quaternion().setFromEuler(euler), lerpAmount);
+        // もし計算エラーで数値以外が混ざっていたら適用をキャンセルしてフリーズを防ぐ
+        if (isNaN(rotation.x) || isNaN(rotation.y) || isNaN(rotation.z)) return;
+        node.quaternion.slerp(new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.x * dampener, rotation.y * dampener, rotation.z * dampener, "XYZ")), lerpAmount);
       };
 
+      // --- MediaPipe 結果処理 ---
       holistic.onResults((results) => {
-        if (!isAvatarMode) {
-          skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
-          drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#00FF00", lineWidth: 3 });
-          drawConnectors(skelCtx, results.leftHandLandmarks, HAND_CONNECTIONS, { color: "#00CCFF", lineWidth: 3 });
-          drawConnectors(skelCtx, results.rightHandLandmarks, HAND_CONNECTIONS, { color: "#FFCC00", lineWidth: 3 });
-        } else if (currentVrm) {
-          // --- Face ---
-          if (results.faceLandmarks) {
-            const faceRig = Kalidokit.Face.solve(results.faceLandmarks, { runtime: "mediapipe", video: videoElement });
-            if (faceRig) {
-              rigRotation("Head", faceRig.head, 0.7, 0.4); rigRotation("Neck", faceRig.head, 0.4, 0.4);
-              if (currentVrm.expressionManager) {
-                currentVrm.expressionManager.setValue("aa", faceRig.mouth.shape.A);
-                currentVrm.expressionManager.setValue("ih", faceRig.mouth.shape.I);
-                currentVrm.expressionManager.setValue("ou", faceRig.mouth.shape.U);
-                currentVrm.expressionManager.setValue("ee", faceRig.mouth.shape.E);
-                currentVrm.expressionManager.setValue("oh", faceRig.mouth.shape.O);
+        try { // 💡システム全体のクラッシュを防ぐバリア
+          if (!isAvatarMode) {
+            skelCtx.save(); skelCtx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
+            drawConnectors(skelCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#00FF00", lineWidth: 3 });
+            drawConnectors(skelCtx, results.leftHandLandmarks, HAND_CONNECTIONS, { color: "#00CCFF", lineWidth: 3 });
+            drawConnectors(skelCtx, results.rightHandLandmarks, HAND_CONNECTIONS, { color: "#FFCC00", lineWidth: 3 });
+            skelCtx.restore();
+          } else if (currentVrm) {
+            // 顔
+            if (results.faceLandmarks) {
+              const faceRig = Kalidokit.Face.solve(results.faceLandmarks, { runtime: "mediapipe", video: videoElement });
+              if (faceRig) {
+                rigRotation("Head", faceRig.head, 0.7, 0.4); rigRotation("Neck", faceRig.head, 0.4, 0.4);
+                if (currentVrm.expressionManager) {
+                  currentVrm.expressionManager.setValue("aa", faceRig.mouth.shape.A);
+                  currentVrm.expressionManager.setValue("ih", faceRig.mouth.shape.I);
+                  currentVrm.expressionManager.setValue("ou", faceRig.mouth.shape.U);
+                  currentVrm.expressionManager.setValue("ee", faceRig.mouth.shape.E);
+                  currentVrm.expressionManager.setValue("oh", faceRig.mouth.shape.O);
+                  currentVrm.expressionManager.setValue("blinkLeft", 1 - faceRig.eye.l);
+                  currentVrm.expressionManager.setValue("blinkRight", 1 - faceRig.eye.r);
+                }
               }
             }
+            // 体・腕・足 (2D推測)
+            if (results.poseLandmarks) {
+              const lm = results.poseLandmarks;
+              const zVal = (p) => (p && p.z) ? p.z : 0; // 奥行きエラー対策
+              
+              if (lm[11] && lm[12]) {
+                const roll = Math.atan2(lm[11].y - lm[12].y, lm[11].x - lm[12].x);
+                const yaw = (zVal(lm[12]) - zVal(lm[11])) * 1.5;
+                const pitch = (zVal(lm[11]) + zVal(lm[12])) * -1.0;
+                rigRotation("Spine", { x: pitch * 0.3, y: yaw * 0.5, z: roll * 0.5 }, 1, 0.2);
+              }
+              // 右腕
+              if (lm[12] && lm[14]) {
+                const rArmZ = Math.atan2(lm[14].y - lm[12].y, lm[14].x - lm[12].x);
+                const rArmY = Math.atan2(zVal(lm[14]) - zVal(lm[12]), lm[14].x - lm[12].x);
+                rigRotation("RightUpperArm", { x: 0, y: rArmY, z: -rArmZ }, 1, 0.4);
+                if (lm[16]) {
+                  let rLowZ = Math.atan2(lm[16].y - lm[14].y, lm[16].x - lm[14].x) - rArmZ;
+                  if (rLowZ > Math.PI) rLowZ -= 2 * Math.PI; else if (rLowZ < -Math.PI) rLowZ += 2 * Math.PI;
+                  rigRotation("RightLowerArm", { x: 0, y: 0, z: -rLowZ }, 1, 0.4);
+                }
+              }
+              // 左腕
+              if (lm[11] && lm[13]) {
+                const lArmZ = Math.atan2(lm[13].y - lm[11].y, -(lm[13].x - lm[11].x));
+                const lArmY = Math.atan2(zVal(lm[13]) - zVal(lm[11]), -(lm[13].x - lm[11].x));
+                rigRotation("LeftUpperArm", { x: 0, y: lArmY, z: lArmZ }, 1, 0.4);
+                if (lm[15]) {
+                  let lLowZ = Math.atan2(lm[15].y - lm[13].y, -(lm[15].x - lm[13].x)) - lArmZ;
+                  if (lLowZ > Math.PI) lLowZ -= 2 * Math.PI; else if (lLowZ < -Math.PI) lLowZ += 2 * Math.PI;
+                  rigRotation("LeftLowerArm", { x: 0, y: 0, z: lLowZ }, 1, 0.4);
+                }
+              }
+              // 足
+              const isVis = (p) => p && p.visibility > 0.6;
+              if (isVis(lm[24]) && isVis(lm[26])) {
+                const rLegZ = Math.atan2(lm[26].y - lm[24].y, lm[26].x - lm[24].x) - (Math.PI/2);
+                rigRotation("RightUpperLeg", { x: (zVal(lm[26]) - zVal(lm[24])) * -2.0, y: 0, z: -rLegZ }, 1, 0.2);
+              } else rigRotation("RightUpperLeg", { x: 0, y: 0, z: 0 }, 1, 0.1);
+              
+              if (isVis(lm[23]) && isVis(lm[25])) {
+                const lLegZ = Math.atan2(lm[25].y - lm[23].y, -(lm[25].x - lm[23].x)) - (Math.PI/2);
+                rigRotation("LeftUpperLeg", { x: (zVal(lm[25]) - zVal(lm[23])) * -2.0, y: 0, z: lLegZ }, 1, 0.2);
+              } else rigRotation("LeftUpperLeg", { x: 0, y: 0, z: 0 }, 1, 0.1);
+            }
+            // 指
+            if (results.leftHandLandmarks) {
+              const lHand = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
+              if (lHand) for (const [k, v] of Object.entries(lHand)) rigRotation(k, v, 1, 0.3);
+            }
+            if (results.rightHandLandmarks) {
+              const rHand = Kalidokit.Hand.solve(results.rightHandLandmarks, "Right");
+              if (rHand) for (const[k, v] of Object.entries(rHand)) rigRotation(k, v, 1, 0.3);
+            }
+
+            currentVrm.update(1.0 / 30.0);
+            renderer.render(scene, camera);
           }
-
-          // --- Pose (2D Simulated Hybrid) ---
-          if (results.poseLandmarks) {
-            const lm = results.poseLandmarks;
-            // 2D計算ヘルパー (Tポーズ基準)
-            const calcAngleZ = (p1, p2, isLeft) => {
-              if(!p1 || !p2) return 0;
-              const dx = p2.x - p1.x; const dy = p2.y - p1.y;
-              return isLeft ? Math.atan2(dy, -dx) : Math.atan2(dy, dx);
-            };
-
-            // 腕 (Arm)
-            const rightUpperArmZ = calcAngleZ(lm[12], lm[14], false);
-            rigRotation("RightUpperArm", { x: 0, y: 0, z: -rightUpperArmZ }, 1, 0.4);
-            if(lm[16]) {
-              let rightLowerArmZ = calcAngleZ(lm[14], lm[16], false) - rightUpperArmZ;
-              if (rightLowerArmZ > Math.PI) rightLowerArmZ -= 2 * Math.PI; else if (rightLowerArmZ < -Math.PI) rightLowerArmZ += 2 * Math.PI;
-              rigRotation("RightLowerArm", { x: 0, y: 0, z: -rightLowerArmZ }, 1, 0.4);
-            }
-            const leftUpperArmZ = calcAngleZ(lm[11], lm[13], true);
-            rigRotation("LeftUpperArm", { x: 0, y: 0, z: leftUpperArmZ }, 1, 0.4);
-            if(lm[15]) {
-              let leftLowerArmZ = calcAngleZ(lm[13], lm[15], true) - leftUpperArmZ;
-              if (leftLowerArmZ > Math.PI) leftLowerArmZ -= 2 * Math.PI; else if (leftLowerArmZ < -Math.PI) leftLowerArmZ += 2 * Math.PI;
-              rigRotation("LeftLowerArm", { x: 0, y: 0, z: leftLowerArmZ }, 1, 0.4);
-            }
-
-            // 足 (Leg) - Y軸下向き(Math.PI/2)を基準(0)に変換
-            if(lm[24] && lm[26]) {
-               const rUpLegZ = Math.atan2(lm[26].y - lm[24].y, lm[26].x - lm[24].x) - (Math.PI/2);
-               rigRotation("RightUpperLeg", { x: 0, y: 0, z: -rUpLegZ }, 1, 0.3);
-            }
-            if(lm[23] && lm[25]) {
-               const lUpLegZ = Math.atan2(lm[25].y - lm[23].y, -(lm[25].x - lm[23].x)) - (Math.PI/2);
-               rigRotation("LeftUpperLeg", { x: 0, y: 0, z: lUpLegZ }, 1, 0.3);
-            }
-
-            // 体 (Spine) - 肩の傾き
-            if(lm[11] && lm[12]) {
-               const spineTilt = Math.atan2(lm[11].y - lm[12].y, lm[11].x - lm[12].x);
-               rigRotation("Spine", { x: 0, y: 0, z: spineTilt * 0.5 }, 1, 0.2);
-            }
-          }
-
-          // --- Hands (復活) ---
-          if (results.leftHandLandmarks) {
-            const leftHandRig = Kalidokit.Hand.solve(results.leftHandLandmarks, "Left");
-            if (leftHandRig) for (const [k, v] of Object.entries(leftHandRig)) rigRotation(k, v, 1, 0.3);
-          }
-          if (results.rightHandLandmarks) {
-            const rightHandRig = Kalidokit.Hand.solve(results.rightHandLandmarks, "Right");
-            if (rightHandRig) for (const [k, v] of Object.entries(rightHandRig)) rigRotation(k, v, 1, 0.3);
-          }
-
-          currentVrm.update(1.0 / 30.0); renderer.render(scene, camera);
+        } catch (error) {
+          console.error("トラッキング中にエラーが発生しました:", error);
         }
       });
 
